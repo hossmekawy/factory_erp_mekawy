@@ -99,11 +99,14 @@ def check_v4_roll_arithmetic(lay, lines, tolerance_pct: Decimal) -> list:
     Skipped for spliced rows (the roll ran out mid-ply, so the arithmetic is
     shared with the next row) and for the quick mode's aggregate row.
 
-    Level follows SRS 5.5 literally: a block in detailed mode, a warning in
-    quick mode.
+    **Always a warning, never a block, in either entry mode.** A supervisor who
+    cannot close is not going to go back and re-measure the roll — he is going
+    to change the number until the screen lets him through. Blocking here buys
+    tidy rows and costs true ones. The lay is flagged `has_length_mismatch`
+    instead, and the reports surface it.
     """
     issues = []
-    level = WARNING if lay.entry_mode == lay.MODE_QUICK else ERROR
+    level = WARNING
     for ln in lines:
         if ln.has_splice or ln.is_aggregate:
             continue

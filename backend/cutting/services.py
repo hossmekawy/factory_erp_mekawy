@@ -91,6 +91,12 @@ def calculate(lay, lines=None, output=None, settings=None) -> dict:
         shortage_pct = shortage / roll_length * 100
         has_shortage = shortage_pct > settings.fabric_tolerance_pct
 
+    # V4 drift is recorded as a flag rather than blocking the close, so it has
+    # to be a column: SRS 9.2 reports on it and 7.1.2 filters by it.
+    has_length_mismatch = bool(
+        validators.check_v4_roll_arithmetic(lay, lines, settings.fabric_tolerance_pct)
+    )
+
     return {
         "total_plies": plies,
         "theoretical_pieces": theoretical_pieces,
@@ -102,6 +108,7 @@ def calculate(lay, lines=None, output=None, settings=None) -> dict:
         "real_metrage": real_metrage,
         "deviation_pct": deviation_pct,
         "has_shortage": has_shortage,
+        "has_length_mismatch": has_length_mismatch,
         "has_splice": any(ln.has_splice for ln in lines),
     }
 

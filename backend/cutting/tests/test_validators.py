@@ -79,7 +79,10 @@ class TestV3Remnant:
 
 
 class TestV4RollArithmetic:
-    def test_a_roll_that_does_not_add_up_blocks_a_detailed_lay(self, make_lay):
+    """Never a block. A supervisor who cannot close edits the number instead of
+    re-measuring the roll, so blocking would buy tidy rows and cost true ones."""
+
+    def test_a_roll_that_does_not_add_up_warns_in_detailed_mode(self, make_lay):
         """20 × 4.95 + 0.50 = 99.50, but the notebook says 90."""
         lay = make_lay(lines=[
             {"roll_length_m": "90.00", "plies": 20, "remnant_m": "0.50"},
@@ -88,9 +91,9 @@ class TestV4RollArithmetic:
             lay, list(lay.lines.all()), Decimal("0.5")
         )
         assert codes(issues) == ["V4"]
-        assert issues[0].level == validators.ERROR
+        assert issues[0].level == validators.WARNING
 
-    def test_the_same_row_only_warns_in_quick_mode(self, make_lay):
+    def test_it_warns_in_quick_mode_too(self, make_lay):
         lay = make_lay(
             entry_mode=Lay.MODE_QUICK,
             lines=[{"roll_length_m": "90.00", "plies": 20, "remnant_m": "0.50"}],
@@ -99,6 +102,26 @@ class TestV4RollArithmetic:
             lay, list(lay.lines.all()), Decimal("0.5")
         )
         assert issues[0].level == validators.WARNING
+
+    def test_the_lay_is_flagged_so_the_reports_can_find_it(self, make_lay):
+        lay = make_lay(lines=[
+            {"roll_length_m": "90.00", "plies": 20, "remnant_m": "0.50"},
+        ])
+        assert lay.has_length_mismatch is True
+        assert Lay.objects.filter(has_length_mismatch=True).count() == 1
+
+    def test_a_lay_that_adds_up_is_not_flagged(self, make_lay):
+        assert make_lay().has_length_mismatch is False
+
+    def test_the_drift_does_not_stop_the_close(self, make_lay, user):
+        """The whole point of the change: it closes, and it stays flagged."""
+        lay = make_lay(lines=[
+            {"roll_length_m": "90.00", "plies": 20, "remnant_m": "0.50"},
+        ])
+        services.close_lay(lay, user, override_reason="التوب اتقاس بالتقريب")
+        lay.refresh_from_db()
+        assert lay.status == Lay.STATUS_CLOSED
+        assert lay.has_length_mismatch is True
 
     def test_drift_inside_the_tolerance_passes(self, make_lay):
         lay = make_lay(lines=[

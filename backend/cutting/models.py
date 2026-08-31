@@ -72,7 +72,9 @@ class SizeSet(models.Model):
         try:
             size_utils.parse_sizes(self.sizes_raw)
         except size_utils.SizeParseError as exc:
-            raise ValidationError({"sizes_raw": str(exc)})
+            raise ValidationError(
+                {"sizes_raw": ValidationError(str(exc), code="sizes_unreadable")}
+            )
 
     def save(self, *args, **kwargs):
         self.total_pieces = size_utils.total_pieces(self.sizes_raw)
@@ -256,6 +258,11 @@ class Lay(models.Model):
         max_digits=8, decimal_places=2, null=True, blank=True, verbose_name="انحراف الميتراج %"
     )
     has_shortage = models.BooleanField(default=False, verbose_name="فيها عجز")
+    # V4 drift: at least one roll's length does not match plies x lay length
+    # plus remnant. A flag, not a block — see validators.check_v4_roll_arithmetic.
+    has_length_mismatch = models.BooleanField(
+        default=False, verbose_name="فيها فرق في الأطوال"
+    )
 
     # --- audit -----------------------------------------------------------
     created_at = models.DateTimeField(auto_now_add=True)
@@ -285,6 +292,7 @@ class Lay(models.Model):
             models.Index(fields=["bank", "start_date"], name="lay_bank_idx"),
             models.Index(fields=["garment_model", "start_date"], name="lay_model_idx"),
             models.Index(fields=["has_shortage"], name="lay_shortage_idx"),
+            models.Index(fields=["has_length_mismatch"], name="lay_length_mismatch_idx"),
             models.Index(fields=["is_backfill"], name="lay_backfill_idx"),
             models.Index(fields=["deviation_pct"], name="lay_deviation_idx"),
             models.Index(fields=["real_metrage"], name="lay_real_metrage_idx"),
@@ -316,7 +324,11 @@ class Lay(models.Model):
         if self.start_date and not self.end_date:
             self.end_date = self.start_date
         if self.start_date and self.end_date and self.end_date < self.start_date:
-            raise ValidationError({"end_date": "تاريخ النهاية قبل تاريخ البداية"})
+            raise ValidationError(
+                {"end_date": ValidationError(
+                    "تاريخ النهاية قبل تاريخ البداية", code="date_order"
+                )}
+            )
 
     def save(self, *args, **kwargs):
         if self.start_date and not self.end_date:
@@ -460,18 +472,23 @@ class LayLine(models.Model):
         return self.DISPOSITION_WASTE if self.remnant_m < threshold else self.DISPOSITION_USABLE
 
     def clean(self):
+        """V2 and V3. Tagged with their SRS codes so the API can pass the rule
+        number straight through to the screen."""
         errors = {}
-        # V2
         if self.plies is not None and self.plies <= 0:
-            errors["plies"] = "الراق لازم يكون أكبر من صفر"
+            errors["plies"] = ValidationError("الراق لازم يكون أكبر من صفر", code="V2")
         if self.roll_length_m is not None and self.roll_length_m <= 0:
-            errors["roll_length_m"] = "طول التوب لازم يكون أكبر من صفر"
+            errors["roll_length_m"] = ValidationError(
+                "طول التوب لازم يكون أكبر من صفر", code="V2"
+            )
         if self.remnant_m is not None and self.remnant_m < 0:
-            errors["remnant_m"] = "الباقي ماينفعش يكون بالسالب"
+            errors["remnant_m"] = ValidationError("الباقي ماينفعش يكون بالسالب", code="V2")
         # V3 — needs the parent's lay length.
-        if self.remnant_m is not None and self.lay_id:
+        elif self.remnant_m is not None and self.lay_id:
             if self.remnant_m >= self.lay.lay_length_m:
-                errors["remnant_m"] = "الباقي أكبر من طول الفرشة — كان ينفع راق زيادة"
+                errors["remnant_m"] = ValidationError(
+                    "الباقي أكبر من طول الفرشة — كان ينفع راق زيادة", code="V3"
+                )
         if errors:
             raise ValidationError(errors)
 
@@ -519,6 +536,9 @@ class RemnantLog(models.Model):
     shade_note = models.CharField(max_length=100, blank=True, verbose_name="توصيف اللون")
     lot_no = models.CharField(max_length=50, blank=True, verbose_name="رقم اللوط")
     article = models.CharField(max_length=100, blank=True, verbose_name="الخامة")
+    DISPOSITION_WASTE = LayLine.DISPOSITION_WASTE
+    DISPOSITION_USABLE = LayLine.DISPOSITION_USABLE
+
     disposition = models.CharField(
         max_length=10, choices=LayLine.DISPOSITION_CHOICES, verbose_name="التصنيف"
     )

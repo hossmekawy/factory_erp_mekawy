@@ -50,7 +50,10 @@ class LayAdmin(admin.ModelAdmin):
         "id", "start_date", "end_date", "garment_model", "bank", "team_leader",
         "total_plies", "theoretical_pieces", "real_metrage", "deviation_pct", "status",
     ]
-    list_filter = ["status", "entry_mode", "is_backfill", "has_shortage", "bank"]
+    list_filter = [
+        "status", "entry_mode", "is_backfill", "has_shortage",
+        "has_length_mismatch", "bank",
+    ]
     search_fields = ["garment_model__code", "garment_model__name", "team_leader__full_name"]
     date_hierarchy = "start_date"
     inlines = [LaySizeBreakdownInline, LayLineInline]
@@ -58,7 +61,8 @@ class LayAdmin(admin.ModelAdmin):
     readonly_fields = [
         "total_plies", "theoretical_pieces", "total_roll_length_m", "total_remnant_m",
         "consumed_m", "fabric_shortage_m", "expected_metrage", "real_metrage",
-        "deviation_pct", "has_shortage", "has_splice", "closed_at", "closed_by",
+        "deviation_pct", "has_shortage", "has_length_mismatch", "has_splice",
+        "closed_at", "closed_by",
     ]
 
 
