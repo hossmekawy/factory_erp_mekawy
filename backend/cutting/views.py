@@ -10,18 +10,29 @@ Failures come back in one shape, carrying the SRS rule number — see
 import datetime
 
 from django.core.exceptions import ValidationError as DjangoValidationError
-from django.db.models import Prefetch
+from django.db import models
+from django.db.models import Avg, Count, Prefetch, Sum
 from rest_framework import status, viewsets
 from rest_framework.decorators import action, api_view, permission_classes
+from rest_framework.exceptions import PermissionDenied
 from rest_framework.response import Response
 
 from hr.attendance import present_codes
 from hr.models import Employee
 
-from . import exceptions, filters, services
+from . import exceptions, filters, search, services
 from . import sizes as size_utils
 from . import validators
-from .models import Bank, CuttingSettings, GarmentModel, Lay, LayLine, RemnantLog, SizeSet
+from .models import (
+    Bank,
+    CuttingSettings,
+    GarmentModel,
+    Lay,
+    LayLine,
+    RemnantLog,
+    SavedFilter,
+    SizeSet,
+)
 from .permissions import (
     CanAddToCatalogue,
     CanEditLays,
@@ -38,6 +49,7 @@ from .serializers import (
     LaySerializer,
     RecordOutputSerializer,
     RemnantLogSerializer,
+    SavedFilterSerializer,
     SizeSetSerializer,
     TeamLeaderSerializer,
 )
@@ -249,6 +261,58 @@ class LayViewSet(ServiceErrorMixin, viewsets.ModelViewSet):
         lay.refresh_from_db()
         return Response(LaySerializer(lay, context=self.get_serializer_context()).data)
 
+    # --- list-level reads -----------------------------------------------
+
+    @action(detail=False, methods=["get"])
+    def search(self, request):
+        """One search box: free words plus shorthand tokens (SRS 7.1.1).
+
+        `?q=ميتراج>1.2 عجز:نعم كارل` becomes the ordinary filter parameters
+        plus a text search, so this endpoint and the plain list filter through
+        exactly the same code.
+        """
+        free_text, params = search.parse_query(request.query_params.get("q", ""))
+
+        merged = request.query_params.copy()
+        merged.pop("q", None)
+        for key, value in params.items():
+            merged[key] = value
+        if free_text:
+            merged["search"] = free_text
+
+        request._request.GET = merged
+        page = self.paginate_queryset(self.filter_queryset(self.get_queryset()))
+        data = LayListSerializer(page, many=True, context=self.get_serializer_context()).data
+        response = self.get_paginated_response(data)
+        response.data["parsed"] = {
+            "free_text": free_text,
+            "filters": search.describe(params),
+        }
+        return response
+
+    @action(detail=False, methods=["get"])
+    def summary(self, request):
+        """The cards above the list, over whatever filters are applied."""
+        qs = self.filter_queryset(self.get_queryset())
+        agg = qs.aggregate(
+            lays=Count("id", distinct=True),
+            theoretical=Sum("theoretical_pieces"),
+            actual=Sum("output__actual_pieces"),
+            avg_real_metrage=Avg("real_metrage"),
+            fabric=Sum("total_roll_length_m"),
+        )
+        return Response({
+            "lays": agg["lays"] or 0,
+            "theoretical_pieces": agg["theoretical"] or 0,
+            "actual_pieces": agg["actual"] or 0,
+            "avg_real_metrage": agg["avg_real_metrage"],
+            "total_fabric_m": agg["fabric"] or 0,
+            "with_shortage": qs.filter(has_shortage=True).count(),
+            "awaiting_count": qs.filter(
+                status=Lay.STATUS_CLOSED, output__isnull=True
+            ).count(),
+        })
+
     # --- reads ----------------------------------------------------------
 
     @action(detail=True, methods=["get"])
@@ -295,6 +359,27 @@ class LayViewSet(ServiceErrorMixin, viewsets.ModelViewSet):
         lay.sheet_image = image
         lay.save(update_fields=["sheet_image"])
         return Response(LaySerializer(lay, context=self.get_serializer_context()).data)
+
+
+class SavedFilterViewSet(ServiceErrorMixin, viewsets.ModelViewSet):
+    """Named searches. Everyone sees their own plus anything marked shared."""
+
+    serializer_class = SavedFilterSerializer
+    permission_classes = [CanViewCutting]
+
+    def get_queryset(self):
+        return SavedFilter.objects.filter(
+            models.Q(owner=self.request.user) | models.Q(is_shared=True)
+        ).select_related("owner")
+
+    def perform_create(self, serializer):
+        serializer.save(owner=self.request.user)
+
+    def perform_destroy(self, instance):
+        # A shared filter belongs to whoever made it.
+        if instance.owner_id != self.request.user.id:
+            raise PermissionDenied("البحث ده مش بتاعك")
+        instance.delete()
 
 
 class LayLineViewSet(ServiceErrorMixin, viewsets.ModelViewSet):

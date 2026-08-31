@@ -27,6 +27,9 @@ cutting_router.register("models", cutting_views.GarmentModelViewSet)
 cutting_router.register("lays", cutting_views.LayViewSet, basename="lay")
 cutting_router.register("lay-lines", cutting_views.LayLineViewSet)
 cutting_router.register("remnants", cutting_views.RemnantLogViewSet)
+cutting_router.register(
+    "saved-filters", cutting_views.SavedFilterViewSet, basename="saved-filter"
+)
 cutting_router.register("settings", cutting_views.CuttingSettingsViewSet)
 
 urlpatterns = [

@@ -7,8 +7,6 @@ import datetime
 from decimal import Decimal
 
 import pytest
-from django.contrib.auth.models import Group, User
-from rest_framework.test import APIClient
 
 from cutting import services
 from cutting.models import Lay, LayLine, SizeSet
@@ -17,36 +15,6 @@ from cutting.tests.conftest import TODAY
 pytestmark = pytest.mark.django_db
 
 DAY = datetime.timedelta(days=1)
-
-
-@pytest.fixture
-def api():
-    return APIClient()
-
-
-@pytest.fixture
-def make_user(db):
-    def _make(role):
-        user = User.objects.create_user(username=f"u_{role}", password="pw")
-        if role:
-            user.groups.add(Group.objects.get_or_create(name=role)[0])
-        return user
-
-    return _make
-
-
-@pytest.fixture
-def as_role(api, make_user):
-    def _login(role):
-        api.force_authenticate(make_user(role))
-        return api
-
-    return _login
-
-
-@pytest.fixture
-def supervisor(as_role):
-    return as_role("cutting_supervisor")
 
 
 def issue_codes(response):

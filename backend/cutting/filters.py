@@ -78,6 +78,10 @@ class LayFilter(df.FilterSet):
     total_remnant_max = df.NumberFilter(field_name="total_remnant_m", lookup_expr="lte")
 
     # --- people ---------------------------------------------------------
+    bank_code = CharInFilter(field_name="bank__code", lookup_expr="in")
+    team_leader_name = df.CharFilter(
+        field_name="team_leader__full_name", lookup_expr="icontains"
+    )
     team_leader = NumberInFilter(field_name="team_leader_id", lookup_expr="in")
     entered_by = NumberInFilter(field_name="entered_by_id", lookup_expr="in")
     bank = NumberInFilter(field_name="bank_id", lookup_expr="in")
@@ -86,6 +90,7 @@ class LayFilter(df.FilterSet):
     status = CharInFilter(field_name="status", lookup_expr="in")
     entry_mode = CharInFilter(field_name="entry_mode", lookup_expr="in")
     has_sheet_image = df.BooleanFilter(method="filter_has_sheet_image")
+    quick_entry = df.BooleanFilter(method="filter_quick_entry")
     awaiting_count = df.BooleanFilter(method="filter_awaiting_count")
 
     class Meta:
@@ -124,6 +129,11 @@ class LayFilter(df.FilterSet):
     def filter_has_sheet_image(self, queryset, name, value):
         blank = Q(sheet_image="") | Q(sheet_image__isnull=True)
         return queryset.exclude(blank) if value else queryset.filter(blank)
+
+    def filter_quick_entry(self, queryset, name, value):
+        """SRS 9.7: how much is being entered in a hurry."""
+        lookup = Q(entry_mode=Lay.MODE_QUICK)
+        return queryset.filter(lookup) if value else queryset.exclude(lookup)
 
     def filter_awaiting_count(self, queryset, name, value):
         """Closed but not yet numbered — the numbering screen's worklist."""

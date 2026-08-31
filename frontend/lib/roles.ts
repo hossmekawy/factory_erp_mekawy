@@ -12,14 +12,14 @@ export const ROLE_LABEL: Record<string, string> = {
 };
 
 // Where each role lands after login (and when bounced off a forbidden page).
-// The supervisor lands straight on the screen he actually uses; the two
-// read-only roles land on the dashboard until the lay list ships in phase د.
+// The supervisor lands on the screen he actually uses; the read-only roles
+// land on the lay list, which is the whole module as far as they are concerned.
 export const ROLE_HOME: Record<string, string> = {
   admin: "/",
   hr: "/employees",
-  production_manager: "/",
+  production_manager: "/cutting",
   cutting_supervisor: "/cutting/new",
-  cutting: "/",
+  cutting: "/cutting",
 };
 
 // Route prefixes each role may open. "all" = unrestricted (admin).

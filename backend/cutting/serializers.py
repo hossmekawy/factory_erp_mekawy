@@ -22,6 +22,7 @@ from .models import (
     LayOutput,
     LaySizeBreakdown,
     RemnantLog,
+    SavedFilter,
     SizeSet,
 )
 
@@ -202,6 +203,16 @@ class LayAuditSerializer(serializers.ModelSerializer):
         model = LayAudit
         fields = ["id", "action", "field", "old_value", "new_value", "reason",
                   "user", "user_name", "at"]
+
+
+class SavedFilterSerializer(serializers.ModelSerializer):
+    owner_name = serializers.CharField(source="owner.username", read_only=True)
+
+    class Meta:
+        model = SavedFilter
+        fields = ["id", "name", "query", "params", "is_shared", "owner",
+                  "owner_name", "created_at"]
+        read_only_fields = ["owner"]
 
 
 class RemnantLogSerializer(serializers.ModelSerializer):

@@ -11,6 +11,7 @@ import {
   Fingerprint,
   Home,
   HardHat,
+  Layers,
   LogOut,
   Menu,
   Settings as SettingsIcon,
@@ -54,6 +55,7 @@ const NAV_GROUPS: NavGroup[] = [
     label: "الإنتاج",
     Icon: Factory,
     items: [
+      { href: "/cutting", label: "الفرشات", Icon: Layers, roles: CUTTING_ROLES },
       {
         href: "/cutting/new",
         label: "فرشة جديدة",

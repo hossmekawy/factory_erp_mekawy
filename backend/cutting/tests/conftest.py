@@ -141,3 +141,39 @@ def make_lay(db, bank, garment_model, leader, user, size_set, sheet_image):
         return lay
 
     return _make
+
+
+# --- API fixtures, shared by test_api.py and test_search.py ---------------
+
+@pytest.fixture
+def api():
+    from rest_framework.test import APIClient
+
+    return APIClient()
+
+
+@pytest.fixture
+def make_user(db):
+    from django.contrib.auth.models import Group
+
+    def _make(role):
+        u = User.objects.create_user(username=f"u_{role or 'none'}", password="pw")
+        if role:
+            u.groups.add(Group.objects.get_or_create(name=role)[0])
+        return u
+
+    return _make
+
+
+@pytest.fixture
+def as_role(api, make_user):
+    def _login(role):
+        api.force_authenticate(make_user(role))
+        return api
+
+    return _login
+
+
+@pytest.fixture
+def supervisor(as_role):
+    return as_role("cutting_supervisor")

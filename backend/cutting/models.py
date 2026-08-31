@@ -557,6 +557,36 @@ class RemnantLog(models.Model):
         return f"{self.length_m} م ({self.get_disposition_display()})"
 
 
+class SavedFilter(models.Model):
+    """A search the supervisor uses often, kept by name (SRS 7.1.1).
+
+    The whole query string is stored verbatim rather than parsed into columns:
+    the list page already puts its state in the URL, so saving is just keeping
+    that string, and a new filter never needs a migration here.
+    """
+
+    name = models.CharField(max_length=100, verbose_name="اسم البحث")
+    query = models.TextField(blank=True, verbose_name="نص البحث")
+    params = models.TextField(blank=True, verbose_name="باقي الفلاتر")
+    owner = models.ForeignKey(
+        User, on_delete=models.CASCADE, related_name="cutting_saved_filters"
+    )
+    # Shared filters show for everyone; the rest only for whoever made them.
+    is_shared = models.BooleanField(default=False, verbose_name="مشترك")
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = "بحث محفوظ"
+        verbose_name_plural = "البحثات المحفوظة"
+        ordering = ["name"]
+        constraints = [
+            models.UniqueConstraint(fields=["owner", "name"], name="uniq_saved_filter_name"),
+        ]
+
+    def __str__(self):
+        return self.name
+
+
 class LayAudit(models.Model):
     """Who changed what after the lay was closed, and why (SRS section 10)."""
 
