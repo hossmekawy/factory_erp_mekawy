@@ -8,6 +8,15 @@ body {
   font-family: var(--font-sans);
 }
 
+/* Cutting screens only (SRS section 10). */
+.font-tajawal,
+.font-tajawal input,
+.font-tajawal select,
+.font-tajawal textarea,
+.font-tajawal button {
+  font-family: var(--font-tajawal), var(--font-sans);
+}
+
 input,
 select,
 textarea {

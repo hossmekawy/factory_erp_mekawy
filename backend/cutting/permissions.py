@@ -46,7 +46,7 @@ class CanEditLays(CanViewCutting):
 
 
 class CanManageCatalogue(CanViewCutting):
-    """Banks, garment models, size sets and settings — admin only."""
+    """Banks, size sets and settings — admin only."""
 
     message = "إدارة الأكواد والمقاسات للأدمن بس"
 
@@ -54,4 +54,24 @@ class CanManageCatalogue(CanViewCutting):
         role = _role(request)
         if request.method in SAFE_METHODS:
             return role in READ_ROLES
+        return role in CATALOGUE_ROLES
+
+
+class CanAddToCatalogue(CanViewCutting):
+    """Same, but the supervisor may also *create*.
+
+    SRS 3 puts catalogue management with the admin, while SRS 7.2 gives the
+    new-lay screen a "quick add" for a model the supervisor is holding in his
+    hand right now. Both hold if he can add but not rewrite: a wrong new row
+    is a nuisance, a rewritten one silently changes closed lays.
+    """
+
+    message = "تعديل الكتالوج للأدمن بس — تقدر تضيف جديد بس"
+
+    def has_permission(self, request, view):
+        role = _role(request)
+        if request.method in SAFE_METHODS:
+            return role in READ_ROLES
+        if request.method == "POST":
+            return role in WRITE_ROLES
         return role in CATALOGUE_ROLES

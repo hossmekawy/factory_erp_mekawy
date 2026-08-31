@@ -12,15 +12,13 @@ export const ROLE_LABEL: Record<string, string> = {
 };
 
 // Where each role lands after login (and when bounced off a forbidden page).
-// The three cutting roles point at the dashboard for now: the old cutting
-// module was removed and its replacement is not built yet. Sending them to a
-// route that no longer exists would bounce them straight back into a login
-// redirect loop. Repoint these at the new module once it ships.
+// The supervisor lands straight on the screen he actually uses; the two
+// read-only roles land on the dashboard until the lay list ships in phase د.
 export const ROLE_HOME: Record<string, string> = {
   admin: "/",
   hr: "/employees",
   production_manager: "/",
-  cutting_supervisor: "/",
+  cutting_supervisor: "/cutting/new",
   cutting: "/",
 };
 
@@ -30,9 +28,9 @@ export const ROLE_HOME: Record<string, string> = {
 export const ROLE_PREFIXES: Record<string, string[] | "all"> = {
   admin: "all",
   hr: ["/employees", "/attendance", "/reports/weekly"],
-  production_manager: ["/"],
-  cutting_supervisor: ["/"],
-  cutting: ["/"],
+  production_manager: ["/", "/cutting"],
+  cutting_supervisor: ["/", "/cutting"],
+  cutting: ["/", "/cutting"],
 };
 
 export function allowedForRole(role: string, pathname: string): boolean {

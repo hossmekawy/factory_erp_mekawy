@@ -1,11 +1,20 @@
 import type { Metadata, Viewport } from "next";
-import { Cairo } from "next/font/google";
+import { Cairo, Tajawal } from "next/font/google";
 import PwaRegister from "@/components/PwaRegister";
 import "./globals.css";
 
 const cairo = Cairo({
   subsets: ["arabic", "latin"],
   variable: "--font-cairo",
+});
+
+// SRS section 10 asks for Tajawal on the cutting screens. Loaded here so it is
+// available app-wide, but applied only via the .font-tajawal class so the HR
+// screens keep the Cairo they already use.
+const tajawal = Tajawal({
+  subsets: ["arabic", "latin"],
+  weight: ["400", "500", "700", "800"],
+  variable: "--font-tajawal",
 });
 
 const BACKEND = process.env.BACKEND_URL ?? "http://127.0.0.1:8010";
@@ -51,7 +60,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="ar" dir="rtl" className={`${cairo.variable} h-full antialiased`}>
+    <html lang="ar" dir="rtl" className={`${cairo.variable} ${tajawal.variable} h-full antialiased`}>
       <body className="min-h-full flex flex-col bg-slate-100 text-slate-900">
         {children}
         <PwaRegister />

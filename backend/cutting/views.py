@@ -22,7 +22,12 @@ from . import exceptions, filters, services
 from . import sizes as size_utils
 from . import validators
 from .models import Bank, CuttingSettings, GarmentModel, Lay, LayLine, RemnantLog, SizeSet
-from .permissions import CanEditLays, CanManageCatalogue, CanViewCutting
+from .permissions import (
+    CanAddToCatalogue,
+    CanEditLays,
+    CanManageCatalogue,
+    CanViewCutting,
+)
 from .serializers import (
     BankSerializer,
     CloseLaySerializer,
@@ -115,9 +120,12 @@ class SizeSetViewSet(ServiceErrorMixin, viewsets.ModelViewSet):
 
 
 class GarmentModelViewSet(ServiceErrorMixin, viewsets.ModelViewSet):
+    """The supervisor may add a model from the new-lay screen (SRS 7.2) but
+    only the admin may change or remove one."""
+
     queryset = GarmentModel.objects.select_related("default_size_set")
     serializer_class = GarmentModelSerializer
-    permission_classes = [CanManageCatalogue]
+    permission_classes = [CanAddToCatalogue]
     filterset_fields = ["category", "fit", "is_active"]
     search_fields = ["code", "name", "fit"]
     ordering_fields = ["code", "name", "created_at"]

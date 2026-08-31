@@ -101,6 +101,30 @@ class TestPermissions:
     def test_the_supervisor_can_still_read_the_catalogues(self, as_role, bank):
         assert as_role("cutting_supervisor").get("/api/cutting/banks/").status_code == 200
 
+    def test_the_supervisor_may_add_a_model_from_the_new_lay_screen(self, as_role):
+        """SRS 7.2 quick-add: he is holding the model in his hand right now."""
+        res = as_role("cutting_supervisor").post(
+            "/api/cutting/models/", {"code": "9001", "name": "موديل جديد"}, format="json"
+        )
+        assert res.status_code == 201
+
+    def test_but_he_may_not_rewrite_one(self, as_role, garment_model):
+        """A wrong new row is a nuisance; a rewritten one changes closed lays."""
+        res = as_role("cutting_supervisor").patch(
+            f"/api/cutting/models/{garment_model.pk}/", {"name": "تاني"}, format="json"
+        )
+        assert res.status_code == 403
+
+    def test_nor_delete_one(self, as_role, garment_model):
+        res = as_role("cutting_supervisor").delete(f"/api/cutting/models/{garment_model.pk}/")
+        assert res.status_code == 403
+
+    def test_a_read_only_role_cannot_add_a_model(self, as_role):
+        res = as_role("production_manager").post(
+            "/api/cutting/models/", {"code": "9002", "name": "x"}, format="json"
+        )
+        assert res.status_code == 403
+
 
 class TestCreateLay:
     def test_the_phone_posts_one_payload_and_gets_a_full_lay_back(

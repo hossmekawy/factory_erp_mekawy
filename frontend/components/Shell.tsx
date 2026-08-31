@@ -7,12 +7,14 @@ import {
   BarChart3,
   ChevronDown,
   Clock,
+  Factory,
   Fingerprint,
   Home,
   HardHat,
   LogOut,
   Menu,
   Settings as SettingsIcon,
+  Scissors,
   ShieldCheck,
   SquarePen,
   Users,
@@ -37,14 +39,29 @@ type NavGroup = {
 };
 
 // `roles` = non-admin roles that can see the item; admin sees everything.
-// The "الإنتاج" group lived here until the old cutting module was removed;
-// it comes back with the new one.
 
 const NAV_TOP: NavItem[] = [
   { href: "/", label: "لوحة التحكم", Icon: Home, roles: [] },
 ];
 
+// Every role that may open a cutting screen. Writing is gated on the backend
+// (cutting/permissions.py); this only decides what appears in the menu.
+const CUTTING_ROLES = ["production_manager", "cutting_supervisor", "cutting"];
+
 const NAV_GROUPS: NavGroup[] = [
+  {
+    key: "production",
+    label: "الإنتاج",
+    Icon: Factory,
+    items: [
+      {
+        href: "/cutting/new",
+        label: "فرشة جديدة",
+        Icon: Scissors,
+        roles: CUTTING_ROLES,
+      },
+    ],
+  },
   {
     key: "hr",
     label: "شؤون العاملين",
