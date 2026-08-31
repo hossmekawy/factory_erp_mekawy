@@ -25,6 +25,7 @@ INSTALLED_APPS = [
     "django_filters",
     "hr",
     "devices",
+    "cutting",
 ]
 
 MIDDLEWARE = [
