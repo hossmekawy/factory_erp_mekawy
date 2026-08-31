@@ -8,6 +8,16 @@ body {
   font-family: var(--font-sans);
 }
 
+/* Numbers and Latin codes inside an RTL page. Without this a minus sign lands
+   on the wrong end ("19.65-") and a space-separated run of sizes is shown in
+   reverse order, because the paragraph direction reorders the sequence even
+   though each number stays LTR internally. */
+.ltr-num {
+  direction: ltr;
+  unicode-bidi: isolate;
+  text-align: left;
+}
+
 /* Cutting screens only (SRS section 10). */
 .font-tajawal,
 .font-tajawal input,

@@ -402,9 +402,10 @@ export default function NewLayPage() {
             {model ? (
               <div className="flex items-center justify-between rounded-lg border border-slate-300 bg-slate-50 px-3 py-2">
                 <span className="font-semibold">
-                  {model.code}
+                  <bdi>{model.code}</bdi>
                   <span className="mr-2 text-sm font-normal text-slate-500">
-                    {model.name} {model.fit && `· ${model.fit}`}
+                    <bdi>{model.name}</bdi>
+                    {model.fit && <> · {model.fit}</>}
                   </span>
                 </span>
                 <button
@@ -418,7 +419,9 @@ export default function NewLayPage() {
             ) : (
               <div className="relative">
                 <input
-                  className={FIELD}
+                  data-testid="model-search"
+                  dir="ltr"
+                  className={`${FIELD} ltr-num`}
                   inputMode="numeric"
                   placeholder="اكتب الكود أو اسم الموديل…"
                   value={modelQuery}
@@ -433,9 +436,10 @@ export default function NewLayPage() {
                         className="block w-full px-3 py-3 text-right hover:bg-red-50"
                         onClick={() => pickModel(m)}
                       >
-                        <span className="font-semibold">{m.code}</span>{" "}
+                        <bdi className="font-semibold">{m.code}</bdi>{" "}
                         <span className="text-sm text-slate-500">
-                          {m.name} {m.fit && `· ${m.fit}`}
+                          <bdi>{m.name}</bdi>
+                          {m.fit && <> · {m.fit}</>}
                         </span>
                       </button>
                     ))}
@@ -448,6 +452,7 @@ export default function NewLayPage() {
                       <span className="font-bold">{modelQuery.trim()}</span>
                     </p>
                     <input
+                      data-testid="new-model-name"
                       className={`${FIELD} mt-2`}
                       placeholder="اسم الموديل (اختياري)"
                       value={newModelName}
@@ -455,6 +460,7 @@ export default function NewLayPage() {
                     />
                     <button
                       type="button"
+                      data-testid="quick-add-model"
                       className="btn-secondary mt-2 w-full"
                       disabled={addingModel}
                       onClick={quickAddModel}
@@ -476,7 +482,9 @@ export default function NewLayPage() {
 
           <Row label="المقاسات">
             <input
-              className={FIELD}
+              data-testid="sizes-input"
+              dir="ltr"
+              className={`${FIELD} ltr-num`}
               inputMode="numeric"
               placeholder="30 32 32 34 34 36"
               value={sizesRaw}
@@ -484,7 +492,7 @@ export default function NewLayPage() {
             />
             {sizesError && <p className="mt-1 text-sm text-rose-600">{sizesError}</p>}
             {chips.length > 0 && (
-              <div className="mt-2 flex flex-wrap gap-1.5">
+              <div dir="ltr" className="mt-2 flex flex-wrap justify-end gap-1.5">
                 {chips.map((c) => (
                   <span
                     key={c.size}
@@ -492,7 +500,7 @@ export default function NewLayPage() {
                   >
                     {c.size}
                     {c.pieces_in_ply > 1 && (
-                      <span className="mr-1 text-red-600">×{c.pieces_in_ply}</span>
+                      <span className="ml-1 text-red-600">&times;{c.pieces_in_ply}</span>
                     )}
                   </span>
                 ))}
@@ -504,17 +512,23 @@ export default function NewLayPage() {
           <div className="grid grid-cols-2 gap-3">
             <Row label="عرض الفرشة">
               <input
-                className={FIELD}
+                data-testid="width-input"
+                dir="ltr"
+                className={`${FIELD} ltr-num`}
                 inputMode="decimal"
                 placeholder="1.62"
                 value={widthRaw}
                 onChange={(e) => setWidthRaw(e.target.value)}
               />
-              <Hint>{widthCm ? `هيتسجّل ${fmt(widthCm)} سم` : "بالمتر زي الدفتر"}</Hint>
+              <Hint testid="width-hint">
+                {widthCm ? `هيتسجّل ${fmt(widthCm)} سم` : "بالمتر زي الدفتر"}
+              </Hint>
             </Row>
             <Row label="طول الفرشة">
               <input
-                className={FIELD}
+                data-testid="length-input"
+                dir="ltr"
+                className={`${FIELD} ltr-num`}
                 inputMode="decimal"
                 placeholder="6.55"
                 value={lengthRaw}
@@ -525,8 +539,11 @@ export default function NewLayPage() {
           </div>
 
           <Row label="عدد القطع">
-            <div className="flex h-12 items-center rounded-lg border border-slate-200 bg-slate-50 px-3 text-base font-bold text-slate-700">
-              {piecesPerPly || "—"}
+            <div
+              data-testid="pieces-per-ply"
+              className="flex h-12 items-center rounded-lg border border-slate-200 bg-slate-50 px-3 text-base font-bold text-slate-700"
+            >
+              <bdi>{piecesPerPly || "—"}</bdi>
               <span className="mr-2 text-sm font-normal text-slate-400">
                 بيتحسب من المقاسات
               </span>
@@ -542,6 +559,7 @@ export default function NewLayPage() {
           <div className="grid grid-cols-2 gap-3">
             <Row label="البنك">
               <select
+                data-testid="bank-select"
                 className={FIELD}
                 value={bankId}
                 onChange={(e) => setBankId(e.target.value ? Number(e.target.value) : "")}
@@ -556,6 +574,7 @@ export default function NewLayPage() {
             </Row>
             <Row label="رئيس الفريق">
               <select
+                data-testid="leader-select"
                 className={FIELD}
                 value={leaderId}
                 onChange={(e) => setLeaderId(e.target.value ? Number(e.target.value) : "")}
@@ -579,6 +598,7 @@ export default function NewLayPage() {
             <button
               key={m}
               type="button"
+              data-testid={`mode-${m}`}
               onClick={() => setMode(m)}
               className={`rounded-lg py-2.5 text-sm font-semibold transition ${
                 mode === m ? "bg-white text-red-700 shadow-sm" : "text-slate-600"
@@ -612,30 +632,37 @@ export default function NewLayPage() {
                         {i + 1}
                       </span>
                       <input
-                        className={FIELD}
+                        data-testid="line-length"
+                        dir="ltr"
+                        className={`${FIELD} ltr-num`}
                         inputMode="decimal"
                         value={l.roll_length_m}
                         onChange={(e) => setLine(l.key, { roll_length_m: e.target.value })}
                       />
                       <input
-                        className={FIELD}
+                        data-testid="line-plies"
+                        dir="ltr"
+                        className={`${FIELD} ltr-num`}
                         inputMode="numeric"
                         value={l.plies}
                         onChange={(e) => setLine(l.key, { plies: e.target.value })}
                       />
                       <input
-                        className={`${FIELD} ${
+                        className={`${FIELD} ltr-num ${
                           hasRemnant
                             ? waste
                               ? "!border-rose-400 !bg-rose-50 !text-rose-700"
                               : "!border-emerald-400 !bg-emerald-50 !text-emerald-700"
                             : ""
                         }`}
+                        data-testid="line-remnant"
+                        dir="ltr"
                         inputMode="decimal"
                         value={l.remnant_m}
                         onChange={(e) => setLine(l.key, { remnant_m: e.target.value })}
                       />
                       <input
+                        data-testid="line-shade"
                         className={FIELD}
                         value={l.shade_note}
                         placeholder="كحلي"
@@ -659,6 +686,7 @@ export default function NewLayPage() {
                         <button
                           key={a}
                           type="button"
+                          data-testid={`roll-end-${a}`}
                           onClick={() => setLine(l.key, { roll_end_action: a })}
                           className={`rounded-full px-2.5 py-1 text-xs font-medium transition ${
                             l.roll_end_action === a
@@ -677,6 +705,7 @@ export default function NewLayPage() {
 
             <button
               type="button"
+              data-testid="add-line"
               onClick={addLine}
               className="mt-3 flex w-full items-center justify-center gap-2 rounded-lg border-2 border-dashed border-slate-300 py-3 text-sm font-semibold text-slate-500 hover:border-red-300 hover:text-red-600"
             >
@@ -694,7 +723,9 @@ export default function NewLayPage() {
           <section className="card mt-3 grid grid-cols-2 gap-3">
             <Row label="إجمالي الأمتار">
               <input
-                className={FIELD}
+                data-testid="quick-metres"
+                dir="ltr"
+                className={`${FIELD} ltr-num`}
                 inputMode="decimal"
                 value={quickMetres}
                 onChange={(e) => setQuickMetres(e.target.value)}
@@ -702,7 +733,9 @@ export default function NewLayPage() {
             </Row>
             <Row label="إجمالي الراق">
               <input
-                className={FIELD}
+                data-testid="quick-plies"
+                dir="ltr"
+                className={`${FIELD} ltr-num`}
                 inputMode="numeric"
                 value={quickPlies}
                 onChange={(e) => setQuickPlies(e.target.value)}
@@ -719,6 +752,7 @@ export default function NewLayPage() {
           <label className="mb-2">صورة ورقة الدفتر</label>
           <input
             ref={fileRef}
+            data-testid="sheet-input"
             type="file"
             accept="image/*"
             capture="environment"
@@ -789,12 +823,14 @@ export default function NewLayPage() {
               <div className="pt-1">
                 <label>السبب — مطلوب عشان تعدّي التحذيرات</label>
                 <textarea
+                  data-testid="reason-input"
                   rows={2}
                   value={reason}
                   onChange={(e) => setReason(e.target.value)}
                   placeholder="مثلاً: رئيس الفريق كان في فرع تاني"
                 />
                 <button
+                  data-testid="close-with-reason"
                   className="btn-primary mt-2 w-full"
                   disabled={busy || !reason.trim()}
                   onClick={() => run(true)}
@@ -809,10 +845,11 @@ export default function NewLayPage() {
         {/* ---- live calculation bar: no server call ---- */}
         <div className="fixed inset-x-0 bottom-0 z-30 border-t border-slate-200 bg-white/95 backdrop-blur">
           <div className="mx-auto grid max-w-2xl grid-cols-4 gap-1 px-3 py-2 text-center">
-            <Stat label="إجمالي الراق" value={String(totals.totalPlies)} />
-            <Stat label="القطع النظرية" value={String(totals.theoreticalPieces)} />
-            <Stat label="الميتراج" value={fmt(totals.expectedMetrage, 3)} />
+            <Stat testid="stat-plies" label="إجمالي الراق" value={String(totals.totalPlies)} />
+            <Stat testid="stat-pieces" label="القطع النظرية" value={String(totals.theoreticalPieces)} />
+            <Stat testid="stat-metrage" label="الميتراج" value={fmt(totals.expectedMetrage, 3)} />
             <Stat
+              testid="stat-shortage"
               label="العجز"
               value={fmt(totals.shortage)}
               tone={totals.shortage > 0.5 ? "rose" : "slate"}
@@ -820,6 +857,7 @@ export default function NewLayPage() {
           </div>
           <div className="mx-auto flex max-w-2xl gap-2 px-3 pb-3">
             <button
+              data-testid="save-btn"
               className="btn-secondary flex-1"
               disabled={busy}
               onClick={() => run(false)}
@@ -827,6 +865,7 @@ export default function NewLayPage() {
               حفظ
             </button>
             <button
+              data-testid="close-btn"
               className="btn-primary flex-[2]"
               disabled={busy}
               onClick={() => run(true)}
@@ -851,23 +890,31 @@ function Row({ label, children }: { label: string; children: React.ReactNode }) 
   );
 }
 
-function Hint({ children }: { children: React.ReactNode }) {
-  return <p className="mt-1 text-xs text-slate-400">{children}</p>;
+function Hint({ children, testid }: { children: React.ReactNode; testid?: string }) {
+  return (
+    <p data-testid={testid} className="mt-1 text-xs text-slate-400">
+      {children}
+    </p>
+  );
 }
 
 function Stat({
   label,
   value,
   tone = "slate",
+  testid,
 }: {
   label: string;
   value: string;
   tone?: "slate" | "rose";
+  testid?: string;
 }) {
   return (
     <div>
       <div className="text-[11px] text-slate-400">{label}</div>
       <div
+        data-testid={testid}
+        dir="ltr"
         className={`text-lg font-bold ${
           tone === "rose" ? "text-rose-600" : "text-slate-800"
         }`}
@@ -885,7 +932,12 @@ function IssueLine({ issue, tone }: { issue: Issue; tone: "rose" | "amber" | "sl
     slate: "bg-slate-50 text-slate-600",
   }[tone];
   return (
-    <div className={`rounded-lg px-3 py-2 text-sm ${colour}`}>
+    <div
+      data-testid="issue"
+      data-code={issue.code}
+      data-level={issue.level}
+      className={`rounded-lg px-3 py-2 text-sm ${colour}`}
+    >
       <span className="ml-2 rounded bg-white/70 px-1.5 py-0.5 font-mono text-xs">
         {issue.code}
       </span>

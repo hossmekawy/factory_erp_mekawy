@@ -97,6 +97,10 @@ export default function Shell({ children }: { children: React.ReactNode }) {
   const [groupOpen, setGroupOpen] = useState<Record<string, boolean>>({});
   const [companyName, setCompanyName] = useState("MR.Mekawy");
   const [logoUrl, setLogoUrl] = useState<string | null>(null);
+  // A stored icon can be a truncated upload. The URL still returns 200 with
+  // the right content-type, so nothing but the decode tells us it is broken —
+  // fall back to the letter badge rather than leaving an empty white box.
+  const [logoBroken, setLogoBroken] = useState(false);
 
   useEffect(() => {
     if (!getAccess()) {
@@ -122,6 +126,7 @@ export default function Shell({ children }: { children: React.ReactNode }) {
       .then((d) => {
         setCompanyName(d.company_name || "MR.Mekawy");
         setLogoUrl(d.icon_512_url || d.icon_192_url || null);
+        setLogoBroken(false);
       })
       .catch(() => {});
   }, []);
@@ -155,10 +160,15 @@ export default function Shell({ children }: { children: React.ReactNode }) {
   const initial = (username || "?").trim().charAt(0).toUpperCase();
 
   const logoBadge = (size: string) =>
-    logoUrl ? (
+    logoUrl && !logoBroken ? (
       <img
         src={logoUrl}
         alt={companyName}
+        onError={() => {
+          // Try the smaller icon once before giving up on images entirely.
+          if (logoUrl.includes("icon_512")) setLogoUrl(logoUrl.replace("icon_512", "icon_192"));
+          else setLogoBroken(true);
+        }}
         className={`${size} shrink-0 rounded-xl bg-white object-contain p-1 shadow-sm`}
       />
     ) : (
