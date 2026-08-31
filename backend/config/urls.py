@@ -5,6 +5,7 @@ from django.urls import include, path
 from rest_framework.routers import DefaultRouter
 from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
 
+from cutting import views as cutting_views
 from devices import iclock_views
 from devices.views import AttendanceLogViewSet, DeviceCommandViewSet, DeviceViewSet
 from hr import views as hr_views
@@ -16,6 +17,17 @@ router.register("users", hr_views.SystemUserViewSet)
 router.register("devices", DeviceViewSet)
 router.register("commands", DeviceCommandViewSet)
 router.register("attendance", AttendanceLogViewSet)
+
+cutting_router = DefaultRouter()
+cutting_router.register("banks", cutting_views.BankViewSet)
+cutting_router.register("size-sets", cutting_views.SizeSetViewSet)
+# The endpoint keeps the SRS name; the class is GarmentModel because `Model`
+# would shadow django.db.models.Model.
+cutting_router.register("models", cutting_views.GarmentModelViewSet)
+cutting_router.register("lays", cutting_views.LayViewSet, basename="lay")
+cutting_router.register("lay-lines", cutting_views.LayLineViewSet)
+cutting_router.register("remnants", cutting_views.RemnantLogViewSet)
+cutting_router.register("settings", cutting_views.CuttingSettingsViewSet)
 
 urlpatterns = [
     path("admin/", admin.site.urls),
@@ -36,6 +48,8 @@ urlpatterns = [
     path("api/reports/weekly/", hr_views.weekly_report),
     path("api/reports/weekly/export/", hr_views.weekly_report_export),
     path("api/reports/weekly/pdf/", hr_views.weekly_report_pdf),
+    path("api/cutting/team-leaders/", cutting_views.team_leaders),
+    path("api/cutting/", include(cutting_router.urls)),
     path("api/", include(router.urls)),
 ]
 
