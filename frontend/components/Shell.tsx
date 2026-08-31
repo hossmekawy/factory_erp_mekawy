@@ -7,14 +7,11 @@ import {
   BarChart3,
   ChevronDown,
   Clock,
-  Factory,
-  FileBarChart,
   Fingerprint,
   Home,
   HardHat,
   LogOut,
   Menu,
-  Scissors,
   Settings as SettingsIcon,
   ShieldCheck,
   SquarePen,
@@ -40,7 +37,8 @@ type NavGroup = {
 };
 
 // `roles` = non-admin roles that can see the item; admin sees everything.
-const CUTTING_ROLES = ["production_manager", "cutting_supervisor", "cutting"];
+// The "الإنتاج" group lived here until the old cutting module was removed;
+// it comes back with the new one.
 
 const NAV_TOP: NavItem[] = [
   { href: "/", label: "لوحة التحكم", Icon: Home, roles: [] },
@@ -56,15 +54,6 @@ const NAV_GROUPS: NavGroup[] = [
       { href: "/attendance", label: "سجل الحضور", Icon: Clock, roles: ["hr"] },
       { href: "/attendance/manual", label: "تسجيل حضور يدوي", Icon: SquarePen, roles: ["hr"] },
       { href: "/reports/weekly", label: "التقرير الأسبوعي", Icon: BarChart3, roles: ["hr"] },
-    ],
-  },
-  {
-    key: "production",
-    label: "الإنتاج",
-    Icon: Factory,
-    items: [
-      { href: "/cutting", label: "مرحلة القص", Icon: Scissors, roles: CUTTING_ROLES },
-      { href: "/cutting/reports", label: "تقارير القص", Icon: FileBarChart, roles: CUTTING_ROLES },
     ],
   },
   {

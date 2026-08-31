@@ -5,7 +5,6 @@ from django.urls import include, path
 from rest_framework.routers import DefaultRouter
 from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
 
-from cutting import views as cutting_views
 from devices import iclock_views
 from devices.views import AttendanceLogViewSet, DeviceCommandViewSet, DeviceViewSet
 from hr import views as hr_views
@@ -17,7 +16,6 @@ router.register("users", hr_views.SystemUserViewSet)
 router.register("devices", DeviceViewSet)
 router.register("commands", DeviceCommandViewSet)
 router.register("attendance", AttendanceLogViewSet)
-router.register("cuttings", cutting_views.CuttingOrderViewSet)
 
 urlpatterns = [
     path("admin/", admin.site.urls),
@@ -38,11 +36,6 @@ urlpatterns = [
     path("api/reports/weekly/", hr_views.weekly_report),
     path("api/reports/weekly/export/", hr_views.weekly_report_export),
     path("api/reports/weekly/pdf/", hr_views.weekly_report_pdf),
-    path("api/cutting/ocr/", cutting_views.ocr_label),
-    path("api/cutting/sizes/", cutting_views.size_suggestions),
-    path("api/cutting/reports/", cutting_views.cutting_report),
-    path("api/cutting/reports/export/", cutting_views.cutting_report_export),
-    path("api/cutting/reports/pdf/", cutting_views.cutting_report_pdf),
     path("api/", include(router.urls)),
 ]
 

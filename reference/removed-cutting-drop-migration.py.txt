@@ -1,0 +1,32 @@
+# سجل تاريخي — مش ملف شغال، متحطهوش في أي app.
+#
+# دي الـ migration اللي درّوبت جداول موديول القص القديم على قاعدة بيانات
+# الإنتاج يوم 2026-08-31. اتحفظت هنا لأنها اتمسحت مع مجلد الـ app نفسه بعد
+# ما اشتغلت.
+#
+# صفوفها في django_migrations (مع 0001 و 0002 القديمين) اتمسحت بعد كده عن
+# قصد: المرحلة ٣ بتعمل app جديدة بنفس الاسم `cutting`، ولو الصفوف دي فضلت
+# كان Django هيعتبر `cutting.0001_initial` متطبّقة ومش هيعمل الجداول الجديدة.
+#
+# على قاعدة بيانات تانية لسه فيها جداول الموديول القديم: مش هتحتاج الملف ده،
+# الأسهل drop يدوي بالترتيب ده:
+#   DROP TABLE cutting_markersize, cutting_fabricroll, cutting_marker,
+#              cutting_cuttingorder CASCADE;
+#   DELETE FROM django_migrations WHERE app='cutting';
+#   -- وبعدين: manage.py remove_stale_contenttypes --include-stale-apps
+
+from django.db import migrations
+
+
+class Migration(migrations.Migration):
+
+    dependencies = [
+        ("cutting", "0002_markersize"),
+    ]
+
+    operations = [
+        migrations.DeleteModel(name="MarkerSize"),
+        migrations.DeleteModel(name="FabricRoll"),
+        migrations.DeleteModel(name="Marker"),
+        migrations.DeleteModel(name="CuttingOrder"),
+    ]
