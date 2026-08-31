@@ -54,6 +54,11 @@ def build_weekly_report(anchor: datetime.date) -> dict:
         present = absent = 0
         total_hours = 0.0
         for day in workdays:
+            # NOTE: this first-punch/last-punch rule is duplicated in
+            # hr/attendance.py, which the cutting module calls per employee.
+            # The duplication is deliberate: this report is in daily use and
+            # correct, and rewriting it on top of the new helper buys nothing
+            # but risk. Change both together if the rule itself ever changes.
             cell = {"date": day.isoformat(), "status": "", "in": None, "out": None, "hours": 0}
             times = sorted(punches.get((emp.employee_code, day), []))
             if times:

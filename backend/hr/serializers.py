@@ -24,7 +24,8 @@ class EmployeeSerializer(serializers.ModelSerializer):
             "id", "employee_code", "full_name", "department", "department_name",
             "job_title", "national_id", "phone_number", "address", "gender",
             "birth_date", "hire_date", "salary", "photo", "id_front_image",
-            "id_back_image", "is_active", "fingerprint_count", "created_at",
+            "id_back_image", "is_active", "is_team_leader", "fingerprint_count",
+            "created_at",
         ]
 
     def get_fingerprint_count(self, obj):

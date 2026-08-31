@@ -49,6 +49,8 @@ class Employee(models.Model):
         upload_to="employee_ids/", null=True, blank=True, verbose_name="صورة ظهر البطاقة"
     )
     is_active = models.BooleanField(default=True, verbose_name="نشط")
+    # Drives the team-leader picker on a cutting Lay; nothing else reads it.
+    is_team_leader = models.BooleanField(default=False, verbose_name="رئيس فريق")
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
