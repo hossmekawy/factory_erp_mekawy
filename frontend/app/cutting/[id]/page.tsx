@@ -10,7 +10,6 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
   ArrowRight,
-  Camera,
   Check,
   ClipboardList,
   Loader2,
@@ -34,10 +33,6 @@ type Line = {
   shade_note: string;
   roll_end_action: keyof typeof ROLL_END_LABEL;
   roll_end_action_label: string;
-  article: string;
-  lot_no: string;
-  roll_no: string;
-  ticket_image: string | null;
   has_splice: boolean;
 };
 
@@ -340,8 +335,6 @@ function Detail({ id }: { id: string }) {
                 <th>الباقي</th>
                 <th>اللون</th>
                 <th>نهاية التوب</th>
-                <th>الخامة / اللوط / التوب</th>
-                <th>تيكت</th>
               </tr>
             </thead>
             <tbody>
@@ -365,16 +358,6 @@ function Detail({ id }: { id: string }) {
                   </td>
                   <td>{l.shade_note || "—"}</td>
                   <td className="text-xs">{l.roll_end_action_label}</td>
-                  <td className="text-xs">
-                    <bdi>{[l.article, l.lot_no, l.roll_no].filter(Boolean).join(" / ") || "—"}</bdi>
-                  </td>
-                  <td>
-                    {l.ticket_image && (
-                      <button onClick={() => setZoom(l.ticket_image)} aria-label="صورة التيكت">
-                        <Camera className="h-4 w-4 text-slate-400 hover:text-red-600" />
-                      </button>
-                    )}
-                  </td>
                 </tr>
               ))}
             </tbody>
@@ -429,7 +412,7 @@ function Detail({ id }: { id: string }) {
 
       {/* ---- 6. documents ---- */}
       <section className="card mt-3">
-        <h2 className="mb-2 font-bold">المرجع</h2>
+        <h2 className="mb-2 font-bold">صورة ورقة الدفتر</h2>
         {lay.sheet_image ? (
           <button onClick={() => setZoom(lay.sheet_image)} className="block w-full">
             <img

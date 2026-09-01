@@ -144,7 +144,7 @@ class LayLineSerializer(ModelCleanMixin, serializers.ModelSerializer):
         model = LayLine
         fields = [
             "id", "lay", "line_no", "roll_ref", "article", "lot_no", "roll_no",
-            "barcode", "ticket_image", "ticket_data", "roll_length_m", "plies",
+            "barcode", "roll_length_m", "plies",
             "remnant_m", "width_cm", "net_weight_kg", "shade_note",
             "roll_end_action", "roll_end_action_label", "remnant_disposition",
             "remnant_disposition_label", "has_splice", "is_aggregate", "notes",

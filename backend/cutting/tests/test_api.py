@@ -816,3 +816,73 @@ class TestNewLayDefaults:
         assert as_role("production_manager").get(
             "/api/cutting/settings/1/"
         ).status_code == 200
+
+
+class TestRemnantLogScreen:
+    """SRS 7.6 — view only. No balance, no "use it"."""
+
+    @pytest.fixture
+    def logged(self, make_lay, user):
+        lay = make_lay(lines=[
+            {"roll_length_m": "99.50", "plies": 20, "remnant_m": "0.50",
+             "article": "MEGAN", "lot_no": "L1", "shade_note": "أسود"},
+            {"roll_length_m": "50.45", "plies": 10, "remnant_m": "1.00",
+             "article": "MEGAN", "lot_no": "L2", "shade_note": "كحلي"},
+        ])
+        services.sync_remnant_logs(lay)
+        return lay
+
+    def test_it_lists_length_shade_lot_and_class(self, supervisor, logged):
+        res = supervisor.get("/api/cutting/remnants/")
+        assert res.status_code == 200
+        assert res.data["count"] == 2
+        row = res.data["results"][0]
+        for key in ["length_m", "shade_note", "lot_no", "article",
+                    "disposition", "disposition_label", "lay"]:
+            assert key in row
+
+    def test_under_a_metre_is_waste_and_over_is_usable(self, supervisor, logged):
+        rows = supervisor.get("/api/cutting/remnants/").data["results"]
+        by_length = {r["length_m"]: r["disposition"] for r in rows}
+        assert by_length["0.50"] == "waste"
+        assert by_length["1.00"] == "usable"
+
+    def test_it_can_be_filtered_by_class(self, supervisor, logged):
+        assert supervisor.get(
+            "/api/cutting/remnants/?disposition=waste"
+        ).data["count"] == 1
+
+    def test_a_read_only_role_can_see_it(self, as_role, logged):
+        assert as_role("production_manager").get(
+            "/api/cutting/remnants/"
+        ).status_code == 200
+
+    def test_nobody_can_write_to_it_at_all(self, as_role, logged):
+        """No balance and no consumption — it is a record, not stock."""
+        client = as_role("admin")
+        assert client.post("/api/cutting/remnants/", {}, format="json").status_code == 405
+        row = client.get("/api/cutting/remnants/").data["results"][0]
+        assert client.patch(f"/api/cutting/remnants/{row['id']}/", {"length_m": "9"},
+                            format="json").status_code == 405
+        assert client.delete(f"/api/cutting/remnants/{row['id']}/").status_code == 405
+
+    def test_it_points_back_at_the_lay(self, supervisor, logged):
+        rows = supervisor.get("/api/cutting/remnants/").data["results"]
+        assert all(r["lay"] == logged.pk for r in rows)
+
+
+class TestTicketFieldsAreGone:
+    """SRS 4.3.1 wanted a photo of every roll's ticket. Nobody is going to take
+    one, and an empty field in front of the supervisor implies he forgot
+    something."""
+
+    def test_a_line_no_longer_carries_a_ticket(self, supervisor, make_lay):
+        lay = make_lay()
+        row = supervisor.get(f"/api/cutting/lays/{lay.pk}/").data["lines"][0]
+        assert "ticket_image" not in row
+        assert "ticket_data" not in row
+
+    def test_the_notebook_photo_is_untouched(self, supervisor, make_lay):
+        """That one really does get taken, once per lay."""
+        lay = make_lay()
+        assert supervisor.get(f"/api/cutting/lays/{lay.pk}/").data["sheet_image"]

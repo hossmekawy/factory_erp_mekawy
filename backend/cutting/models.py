@@ -23,8 +23,7 @@ from . import sizes as size_utils
 
 def lay_image_path(instance, filename):
     """media/cutting/{year}/{month}/... — SRS section 10."""
-    lay = instance if isinstance(instance, Lay) else instance.lay
-    return f"cutting/{lay.start_date:%Y/%m}/{filename}"
+    return f"cutting/{instance.start_date:%Y/%m}/{filename}"
 
 
 class Bank(models.Model):
@@ -478,10 +477,10 @@ class LayLine(models.Model):
     lot_no = models.CharField(max_length=50, blank=True, verbose_name="رقم اللوط")
     roll_no = models.CharField(max_length=50, blank=True, verbose_name="رقم التوب")
     barcode = models.CharField(max_length=100, blank=True, verbose_name="الباركود")
-    ticket_image = models.ImageField(
-        upload_to=lay_image_path, null=True, blank=True, verbose_name="صورة التيكت"
-    )
-    ticket_data = models.JSONField(default=dict, blank=True, verbose_name="بيانات التيكت")
+    # No ticket photo and no ticket JSON. SRS 4.3.1 wanted a picture of every
+    # roll's ticket; nobody on the floor is going to photograph one per roll,
+    # so the fields are gone rather than sitting empty forever. The notebook
+    # page photo stays — that one really does get taken, once per lay.
 
     # Measurements.
     roll_length_m = models.DecimalField(
