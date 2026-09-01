@@ -979,3 +979,79 @@ class TestSizePresets:
         assert as_role("production_manager").get(
             "/api/cutting/size-sets/?is_preset=true"
         ).status_code == 200
+
+
+class TestEditingALay:
+    """A wrong code has to be fixable. SRS 3: after closing, with a reason."""
+
+    def test_an_open_lay_edits_freely(self, supervisor, make_lay):
+        lay = make_lay()
+        res = supervisor.patch(f"/api/cutting/lays/{lay.pk}/",
+                               {"code": "EDIT-1"}, format="json")
+        assert res.status_code == 200
+        lay.refresh_from_db()
+        assert lay.code == "EDIT-1"
+
+    def test_a_closed_lay_refuses_an_edit_with_no_reason(self, supervisor, make_lay):
+        lay = make_lay(status=Lay.STATUS_CLOSED)
+        res = supervisor.patch(f"/api/cutting/lays/{lay.pk}/",
+                               {"code": "EDIT-2"}, format="json")
+        assert res.status_code == 400
+        assert res.data["issues"][0]["code"] == "edit_reason"
+        lay.refresh_from_db()
+        assert lay.code != "EDIT-2"
+
+    def test_and_accepts_it_with_one(self, supervisor, make_lay):
+        lay = make_lay(status=Lay.STATUS_CLOSED)
+        before = lay.code
+        res = supervisor.patch(
+            f"/api/cutting/lays/{lay.pk}/",
+            {"code": "EDIT-3", "edit_reason": "الكود اتكتب غلط"}, format="json",
+        )
+        assert res.status_code == 200
+        lay.refresh_from_db()
+        assert lay.code == "EDIT-3"
+
+        entry = lay.audit_entries.get(action="edit_after_close", field="code")
+        assert entry.old_value == before
+        assert entry.new_value == "EDIT-3"
+        assert entry.reason == "الكود اتكتب غلط"
+
+    def test_a_no_op_patch_on_a_closed_lay_needs_nothing(self, supervisor, make_lay):
+        """Only an actual change demands a reason."""
+        lay = make_lay(status=Lay.STATUS_CLOSED)
+        res = supervisor.patch(f"/api/cutting/lays/{lay.pk}/",
+                               {"code": lay.code}, format="json")
+        assert res.status_code == 200
+
+    def test_the_new_code_still_has_to_be_free(self, supervisor, make_lay):
+        first = make_lay()
+        second = make_lay()
+        res = supervisor.patch(f"/api/cutting/lays/{second.pk}/",
+                               {"code": first.code}, format="json")
+        assert res.status_code == 400
+        assert "مستخدم" in str(res.data["code"][0])
+
+    def test_an_open_lay_can_be_deleted_by_whoever_may_write(
+        self, supervisor, make_lay
+    ):
+        lay = make_lay()
+        assert supervisor.delete(f"/api/cutting/lays/{lay.pk}/").status_code == 204
+
+    def test_a_closed_lay_can_only_be_deleted_by_the_admin(
+        self, as_role, make_lay
+    ):
+        """It carries frozen numbers, an activity log and maybe a count."""
+        lay = make_lay(status=Lay.STATUS_CLOSED)
+        assert as_role("cutting_supervisor").delete(
+            f"/api/cutting/lays/{lay.pk}/"
+        ).status_code == 403
+        assert as_role("admin").delete(
+            f"/api/cutting/lays/{lay.pk}/"
+        ).status_code == 204
+
+    def test_a_read_only_role_edits_nothing(self, as_role, make_lay):
+        lay = make_lay()
+        assert as_role("production_manager").patch(
+            f"/api/cutting/lays/{lay.pk}/", {"code": "NOPE"}, format="json"
+        ).status_code == 403

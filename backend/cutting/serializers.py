@@ -348,7 +348,9 @@ class LaySerializer(ModelCleanMixin, serializers.ModelSerializer):
     # Optional in: the model fills it from start_date for a same-day lay.
     end_date = serializers.DateField(required=False)
     sizes_raw = serializers.CharField(write_only=True, required=False, allow_blank=True)
-    # Required when editing a lay that is already closed (SRS section 3).
+    # Mandatory when editing a lay that is already closed (SRS section 3). The
+    # check is in validate(), because whether it is required depends on the row
+    # being edited, not on the payload.
     edit_reason = serializers.CharField(write_only=True, required=False, allow_blank=True)
 
     # The cutting-run code. Unique, with its own message: the default one is
@@ -391,6 +393,25 @@ class LaySerializer(ModelCleanMixin, serializers.ModelSerializer):
 
     def validate(self, attrs):
         attrs = super().validate(attrs)
+
+        # SRS 3: an edit after closing needs a reason, and the reason is what
+        # gets written into the activity log.
+        if self.instance is not None and self.instance.status != Lay.STATUS_OPEN:
+            changing = {
+                f for f, v in attrs.items()
+                if f not in ("edit_reason", "shade_entries")
+                and getattr(self.instance, f, None) != v
+            }
+            if changing and not (attrs.get("edit_reason") or "").strip():
+                raise serializers.ValidationError({
+                    "detail": "القصة مقفولة — لازم سبب للتعديل",
+                    "issues": [{
+                        "code": "edit_reason", "level": "error",
+                        "message": "القصة مقفولة. اكتب سبب التعديل — بيتسجّل في سجل النشاط.",
+                        "field": "edit_reason", "line_no": None,
+                    }],
+                })
+
         if self.instance is None:
             has_sizes = attrs.get("sizes_raw") or attrs.get("size_set")
             if not has_sizes:

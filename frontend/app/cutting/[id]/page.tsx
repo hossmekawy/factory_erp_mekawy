@@ -10,6 +10,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
   ArrowRight,
+  Pencil,
   Check,
   ClipboardList,
   Loader2,
@@ -92,6 +93,8 @@ type Lay = {
   has_shortage: boolean;
   has_length_mismatch: boolean;
   has_splice: boolean;
+  bank: number;
+  team_leader: number;
   bank_detail: { code: string; name: string };
   code: string;
   garment_model_detail: { code: string; name: string; category_label: string };
@@ -135,6 +138,7 @@ function Detail({ id }: { id: string }) {
   const [issues, setIssues] = useState<Issue[]>([]);
   const [busy, setBusy] = useState(false);
   const [zoom, setZoom] = useState<string | null>(null);
+  const [editing, setEditing] = useState(false);
 
   const load = useCallback(() => {
     setLoading(true);
@@ -247,6 +251,14 @@ function Detail({ id }: { id: string }) {
               اعتماد
             </button>
           )}
+          <button
+            data-testid="edit-lay"
+            className="btn-secondary"
+            onClick={() => setEditing(true)}
+          >
+            <Pencil className="h-4 w-4" />
+            تعديل
+          </button>
           <button className="btn-secondary" onClick={() => window.print()}>
             <Printer className="h-4 w-4" />
             طباعة
@@ -501,6 +513,17 @@ function Detail({ id }: { id: string }) {
         )}
       </section>
 
+      {editing && (
+        <EditLayDialog
+          lay={lay}
+          onClose={() => setEditing(false)}
+          onSaved={() => {
+            setEditing(false);
+            load();
+          }}
+        />
+      )}
+
       {zoom && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/85 p-3 print:hidden"
@@ -512,6 +535,210 @@ function Detail({ id }: { id: string }) {
           <img src={zoom} alt="" className="max-h-full max-w-full object-contain" />
         </div>
       )}
+    </div>
+  );
+}
+
+// Editing the header of a lay. The lines live on the new-lay screen; what gets
+// mistyped and needs fixing from here is the code, the dates and who it is on.
+// SRS 3: once the lay is closed the reason is mandatory and lands in the log.
+function EditLayDialog({
+  lay,
+  onClose,
+  onSaved,
+}: {
+  lay: Lay;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const isOpen = lay.status === "open";
+  const [code, setCode] = useState(lay.code);
+  const [startDate, setStartDate] = useState(lay.start_date);
+  const [endDate, setEndDate] = useState(lay.end_date);
+  const [notes, setNotes] = useState(lay.notes ?? "");
+  const [bank, setBank] = useState<number | "">(lay.bank ?? "");
+  const [leader, setLeader] = useState<number | "">(lay.team_leader ?? "");
+  const [reason, setReason] = useState("");
+  const [banks, setBanks] = useState<{ id: number; name: string }[]>([]);
+  const [leaders, setLeaders] = useState<{ id: number; full_name: string }[]>([]);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const [issues, setIssues] = useState<Issue[]>([]);
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
+
+  useEffect(() => {
+    api("/api/cutting/banks/?is_active=true")
+      .then((d) => setBanks(d.results ?? d))
+      .catch(() => {});
+    api(`/api/cutting/team-leaders/?date_from=${startDate}&date_to=${endDate}`)
+      .then(setLeaders)
+      .catch(() => {});
+  }, [startDate, endDate]);
+
+  const save = async () => {
+    setBusy(true);
+    setError("");
+    setIssues([]);
+    setFieldErrors({});
+    try {
+      await api(`/api/cutting/lays/${lay.id}/`, {
+        method: "PATCH",
+        body: JSON.stringify({
+          code: code.trim(),
+          start_date: startDate,
+          end_date: endDate || startDate,
+          bank,
+          team_leader: leader,
+          notes,
+          ...(isOpen ? {} : { edit_reason: reason }),
+        }),
+      });
+      onSaved();
+    } catch (e) {
+      const data = (e as ApiError).data as Record<string, unknown> | null;
+      const found = issuesOf(data);
+      if (found.length) setIssues(found);
+      else if (data && typeof data === "object") {
+        const perField: Record<string, string> = {};
+        for (const [k, v] of Object.entries(data)) {
+          if (Array.isArray(v)) perField[k] = String(v[0]);
+        }
+        setFieldErrors(perField);
+        if (!Object.keys(perField).length) setError(errorText(e));
+      } else setError(errorText(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-0 sm:items-center sm:p-4 print:hidden">
+      <div className="max-h-[92vh] w-full max-w-md overflow-y-auto rounded-t-2xl bg-white p-4 sm:rounded-2xl">
+        <div className="mb-3 flex items-center justify-between">
+          <h2 className="font-bold">تعديل القصة</h2>
+          <button onClick={onClose} aria-label="إغلاق">
+            <X className="h-5 w-5 text-slate-400" />
+          </button>
+        </div>
+
+        {!isOpen && (
+          <p className="mb-3 rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-800">
+            القصة مقفولة — التعديل بيتسجّل في سجل النشاط بالسبب.
+          </p>
+        )}
+
+        <div className="space-y-3">
+          <div>
+            <label>كود القصة</label>
+            <input
+              data-testid="edit-code"
+              dir="ltr"
+              className="ltr-num min-h-11"
+              inputMode="numeric"
+              value={code}
+              onChange={(e) => setCode(e.target.value)}
+            />
+            {fieldErrors.code && (
+              <p data-testid="edit-code-error" className="mt-1 text-sm text-rose-600">
+                {fieldErrors.code}
+              </p>
+            )}
+          </div>
+
+          <div className="grid grid-cols-2 gap-2">
+            <div>
+              <label className="!text-xs">من</label>
+              <input
+                data-testid="edit-start"
+                type="date"
+                value={startDate}
+                onChange={(e) => setStartDate(e.target.value)}
+              />
+            </div>
+            <div>
+              <label className="!text-xs">إلى</label>
+              <input
+                data-testid="edit-end"
+                type="date"
+                min={startDate}
+                value={endDate}
+                onChange={(e) => setEndDate(e.target.value)}
+              />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-2">
+            <div>
+              <label className="!text-xs">البنك</label>
+              <select
+                data-testid="edit-bank"
+                value={bank}
+                onChange={(e) => setBank(e.target.value ? Number(e.target.value) : "")}
+              >
+                {banks.map((b) => (
+                  <option key={b.id} value={b.id}>{b.name}</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="!text-xs">رئيس الفريق</label>
+              <select
+                data-testid="edit-leader"
+                value={leader}
+                onChange={(e) => setLeader(e.target.value ? Number(e.target.value) : "")}
+              >
+                {leaders.map((l) => (
+                  <option key={l.id} value={l.id}>{l.full_name}</option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          <div>
+            <label>ملاحظات</label>
+            <textarea rows={2} value={notes} onChange={(e) => setNotes(e.target.value)} />
+          </div>
+
+          {!isOpen && (
+            <div>
+              <label>
+                سبب التعديل<span className="text-rose-600"> *</span>
+              </label>
+              <textarea
+                data-testid="edit-reason"
+                rows={2}
+                value={reason}
+                onChange={(e) => setReason(e.target.value)}
+                placeholder="مثلاً: الكود اتكتب غلط"
+              />
+            </div>
+          )}
+        </div>
+
+        {error && <p className="mt-3 text-sm font-semibold text-rose-700">{error}</p>}
+        {issues.map((i, n) => (
+          <div
+            key={n}
+            data-testid="edit-issue"
+            data-code={i.code}
+            className="mt-2 rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-800"
+          >
+            {i.message}
+          </div>
+        ))}
+
+        <div className="mt-4 flex gap-2">
+          <button className="btn-secondary flex-1" onClick={onClose}>إلغاء</button>
+          <button
+            data-testid="edit-save"
+            className="btn-primary flex-1"
+            disabled={busy || !code.trim() || (!isOpen && !reason.trim())}
+            onClick={save}
+          >
+            {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : "حفظ"}
+          </button>
+        </div>
+      </div>
     </div>
   );
 }

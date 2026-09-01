@@ -39,6 +39,7 @@ from .models import (
     SizeSet,
 )
 from .permissions import (
+    _role,
     CanAddToCatalogue,
     CanEditLays,
     CanManageCatalogue,
@@ -242,6 +243,14 @@ class LayViewSet(ServiceErrorMixin, viewsets.ModelViewSet):
 
     def perform_create(self, serializer):
         serializer.save(entered_by=self.request.user)
+
+    def perform_destroy(self, instance):
+        """An open lay is a draft and whoever may write may bin it. A closed one
+        has frozen numbers, an activity log and possibly a count hanging off it,
+        so removing it is the admin's call."""
+        if instance.status != Lay.STATUS_OPEN and _role(self.request) != "admin":
+            raise PermissionDenied("القصة مقفولة — الحذف للأدمن بس")
+        instance.delete()
 
     # --- transitions ----------------------------------------------------
 
