@@ -1,8 +1,16 @@
 // Browser test for the lay list and detail screens (SRS 7.1, 7.1.1, 7.1.2, 7.4).
-// Same staging setup as new-lay.mjs — see the header there for how to run it.
-// Needs a few closed and counted lays on the dev database to filter over.
+// Playwright is NOT a dependency of this project; the browsers were already on
+// the VPS. To run it, start the staging stack against the DEV database:
+//
+//   cd backend && DB_NAME=factory_erp_dev ALLOWED_HOSTS=127.0.0.1,localhost \
+//     DEBUG=True venv/bin/python manage.py runserver 127.0.0.1:8011
+//   cd frontend && BACKEND_URL=http://127.0.0.1:8011 npx next dev -p 3010 \
+//     --hostname 127.0.0.1
+//   node tests/ui/lay-list.mjs          # SHOTS=/some/dir for screenshots
+//
+// Needs a `qa_sup` user in the cutting_supervisor group on the dev database,
+// at least one bank, and the model 1749. It never touches production.
 
-// Browser test for the lay list and detail screens (SRS 7.1, 7.1.1, 7.1.2, 7.4).
 import { chromium, devices } from "playwright";
 import path from "node:path";
 
@@ -110,12 +118,20 @@ check("search text kept", page.url().includes("q="), page.url());
 // ---------------------------------------------------------------- 7
 console.log("\n7. sorting by a column toggles direction in the URL");
 await go("/cutting");
+// Wait for the URL itself rather than a fixed sleep: router.replace lands
+// asynchronously and a timeout here just makes the test flaky.
 await page.locator("thead").getByText("الحقيقي", { exact: true }).click();
-await page.waitForTimeout(700);
-check("ordering set", page.url().includes("ordering=real_metrage"), page.url());
+const ascending = await page
+  .waitForURL(/ordering=real_metrage/, { timeout: 8000 })
+  .then(() => true)
+  .catch(() => false);
+check("ordering set", ascending, page.url());
 await page.locator("thead").getByText("الحقيقي", { exact: true }).click();
-await page.waitForTimeout(700);
-check("ordering flipped", page.url().includes("ordering=-real_metrage"), page.url());
+const descending = await page
+  .waitForURL(/ordering=-real_metrage/, { timeout: 8000 })
+  .then(() => true)
+  .catch(() => false);
+check("ordering flipped", descending, page.url());
 
 // ---------------------------------------------------------------- 8
 console.log("\n8. opening a lay shows every section of 7.4");

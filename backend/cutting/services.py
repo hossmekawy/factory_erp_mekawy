@@ -123,20 +123,28 @@ def recalculate(lay, save: bool = True) -> dict:
     return values
 
 
-def pieces_loss(lay, output=None) -> dict:
-    """Theoretical minus counted, and whether it breaks the pieces tolerance."""
-    output = output if output is not None else getattr(lay, "output", None)
-    if output is None:
-        return {"pieces_loss": None, "pieces_loss_pct": None, "exceeds_tolerance": False}
+def pieces_loss_for(lay, actual_pieces: int) -> dict:
+    """Theoretical minus a given count, and whether it breaks the tolerance.
 
+    Split out from `pieces_loss` so the counting screen can show the loss for a
+    number the supervisor is still typing, before anything is stored.
+    """
     settings = CuttingSettings.get_solo()
-    loss = lay.theoretical_pieces - output.actual_pieces
+    loss = lay.theoretical_pieces - actual_pieces
     loss_pct = None
     exceeds = False
     if lay.theoretical_pieces:
         loss_pct = _q(Decimal(loss) / lay.theoretical_pieces * 100, M2)
         exceeds = loss_pct > settings.pieces_tolerance_pct
     return {"pieces_loss": loss, "pieces_loss_pct": loss_pct, "exceeds_tolerance": exceeds}
+
+
+def pieces_loss(lay, output=None) -> dict:
+    """Theoretical minus counted, and whether it breaks the pieces tolerance."""
+    output = output if output is not None else getattr(lay, "output", None)
+    if output is None:
+        return {"pieces_loss": None, "pieces_loss_pct": None, "exceeds_tolerance": False}
+    return pieces_loss_for(lay, output.actual_pieces)
 
 
 # --- size breakdown ------------------------------------------------------

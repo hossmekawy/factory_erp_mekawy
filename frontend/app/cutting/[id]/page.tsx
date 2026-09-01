@@ -230,12 +230,10 @@ function Detail({ id }: { id: string }) {
             </button>
           )}
           {lay.status === "closed" && !lay.output && (
-            // The counting screen is the next phase; until then this says so
-            // rather than linking somewhere that does not exist.
-            <span className="btn-secondary cursor-default opacity-70">
+            <Link href={`/cutting/count?lay=${id}`} className="btn-primary">
               <ClipboardList className="h-4 w-4" />
-              مستنية ترقيم
-            </span>
+              تسجيل القطع
+            </Link>
           )}
           {lay.status === "counted" && (
             <button className="btn-primary" disabled={busy} onClick={() => act("approve")}>

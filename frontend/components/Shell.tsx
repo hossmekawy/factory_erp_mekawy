@@ -6,6 +6,7 @@ import { useEffect, useState } from "react";
 import {
   BarChart3,
   ChevronDown,
+  ClipboardList,
   Clock,
   Factory,
   Fingerprint,
@@ -62,6 +63,7 @@ const NAV_GROUPS: NavGroup[] = [
         Icon: Scissors,
         roles: CUTTING_ROLES,
       },
+      { href: "/cutting/count", label: "الترقيم", Icon: ClipboardList, roles: CUTTING_ROLES },
     ],
   },
   {

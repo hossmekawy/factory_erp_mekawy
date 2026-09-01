@@ -519,3 +519,61 @@ class TestRemnantsAreReadOnly:
     def test_nobody_can_write_to_it(self, as_role):
         assert as_role("admin").post("/api/cutting/remnants/", {}, format="json") \
             .status_code == 405
+
+
+class TestDistributionPreview:
+    """The counting screen asks the server how a count would split, before it
+    commits anything (SRS 7.3, 4.9)."""
+
+    def test_it_previews_without_saving(self, supervisor, make_lay):
+        lay = make_lay(sizes_raw="30 32 33 34 36 36 38 38 38", status=Lay.STATUS_CLOSED,
+                       lines=[{"roll_length_m": "272.25", "plies": 55, "remnant_m": "0"}])
+        res = supervisor.get(f"/api/cutting/lays/{lay.pk}/distribution/?actual_pieces=490")
+        assert res.status_code == 200
+        split = {r["size"]: r["actual_pieces"] for r in res.data["sizes"]}
+        assert split == {"38": 163, "36": 109, "30": 55, "32": 55, "33": 54, "34": 54}
+        assert sum(split.values()) == 490
+
+        lay.refresh_from_db()
+        assert lay.status == Lay.STATUS_CLOSED   # nothing committed
+        assert not hasattr(lay, "output") or lay.size_breakdown.filter(
+            actual_pieces__isnull=False
+        ).count() == 0
+
+    def test_it_reports_the_loss_for_a_number_not_yet_saved(self, supervisor, make_lay):
+        lay = make_lay(status=Lay.STATUS_CLOSED)  # 120 theoretical
+        res = supervisor.get(f"/api/cutting/lays/{lay.pk}/distribution/?actual_pieces=100")
+        assert res.data["pieces_loss"] == 20
+        assert res.data["exceeds_tolerance"] is True
+
+    def test_it_warns_with_v9_without_refusing_the_preview(self, supervisor, make_lay):
+        """The screen should be able to show why the number is impossible."""
+        lay = make_lay(status=Lay.STATUS_CLOSED)
+        res = supervisor.get(f"/api/cutting/lays/{lay.pk}/distribution/?actual_pieces=999")
+        assert res.status_code == 200
+        assert "V9" in [i["code"] for i in res.data["issues"]]
+
+    def test_a_missing_number_is_a_400(self, supervisor, make_lay):
+        lay = make_lay(status=Lay.STATUS_CLOSED)
+        res = supervisor.get(f"/api/cutting/lays/{lay.pk}/distribution/")
+        assert res.status_code == 400
+
+    def test_a_read_only_role_may_preview(self, as_role, make_lay):
+        lay = make_lay(status=Lay.STATUS_CLOSED)
+        res = as_role("production_manager").get(
+            f"/api/cutting/lays/{lay.pk}/distribution/?actual_pieces=100"
+        )
+        assert res.status_code == 200
+
+
+class TestCountingWorklist:
+    def test_awaiting_count_lists_only_closed_uncounted_lays(
+        self, supervisor, make_lay, user
+    ):
+        waiting = make_lay(status=Lay.STATUS_CLOSED)
+        make_lay()                                        # still open
+        counted = make_lay(status=Lay.STATUS_CLOSED)
+        services.record_output(counted, user, actual_pieces=100)
+
+        res = supervisor.get("/api/cutting/lays/?awaiting_count=true")
+        assert {r["id"] for r in res.data["results"]} == {waiting.pk}

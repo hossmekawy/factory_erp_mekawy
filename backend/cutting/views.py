@@ -242,6 +242,51 @@ class LayViewSet(ServiceErrorMixin, viewsets.ModelViewSet):
         lay.refresh_from_db()
         return Response(LaySerializer(lay, context=self.get_serializer_context()).data)
 
+    @action(detail=True, methods=["get"])
+    def distribution(self, request, pk=None):
+        """Preview how a count would split across the sizes, without saving.
+
+        The counting screen shows the split before the supervisor commits, and
+        it asks the server for it rather than repeating the largest-remainder
+        rule in TypeScript — the parts have to add to the total exactly, and
+        one implementation of that is enough.
+        """
+        lay = self.get_object()
+        raw = request.query_params.get("actual_pieces", "")
+        try:
+            actual = int(raw)
+        except (TypeError, ValueError):
+            return Response(
+                {
+                    "detail": "لازم تبعت عدد القطع",
+                    "issues": [{
+                        "code": "invalid", "level": "error",
+                        "message": "لازم تبعت عدد القطع",
+                        "field": "actual_pieces", "line_no": None,
+                    }],
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        rows = list(lay.size_breakdown.all())
+        split = size_utils.distribute(actual, [(b.size, b.pieces_in_ply) for b in rows])
+        issues = validators.validate_output(lay, actual)
+        return Response({
+            "actual_pieces": actual,
+            "theoretical_pieces": lay.theoretical_pieces,
+            "sizes": [
+                {
+                    "size": b.size,
+                    "pieces_in_ply": b.pieces_in_ply,
+                    "theoretical_pieces": b.theoretical_pieces,
+                    "actual_pieces": split[b.size],
+                }
+                for b in rows
+            ],
+            **services.pieces_loss_for(lay, actual),
+            "issues": [exceptions.issue_dict(i) for i in issues],
+        })
+
     @action(detail=True, methods=["post"])
     def approve(self, request, pk=None):
         lay = self.get_object()
