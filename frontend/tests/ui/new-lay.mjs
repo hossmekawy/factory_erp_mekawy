@@ -68,7 +68,24 @@ async function pickModel(code) {
 }
 
 async function setSizes(text) {
+  // Picking a model fills its usual size run, and adding appends to it, so a
+  // test that wants an exact set has to clear first — after letting that
+  // preset actually render, or there is nothing to clear yet.
+  await page.waitForTimeout(900);
+  const clear = t("clear-sizes");
+  if (await clear.count()) {
+    await clear.scrollIntoViewIfNeeded();
+    await page.mouse.wheel(0, -120);
+    await clear.click({ timeout: 10000 });
+    await page.waitForTimeout(400);
+  }
+  // The box stages one size at a time now — the phone keypad has no space key
+  // — so whatever is typed has to be committed with the add button.
   await t("sizes-input").fill(text);
+  const add = t("add-size");
+  await add.scrollIntoViewIfNeeded();
+  await page.mouse.wheel(0, -120);   // clear of the sticky mobile header
+  await add.click({ timeout: 15000 });
   await page.waitForTimeout(700); // debounce + server parse
 }
 
@@ -203,10 +220,12 @@ await fillHeader({});
 await fillRows([{ len: "50.00", plies: 16, rem: "0.50" }]);
 const shortage = (await t("stat-shortage").innerText()).trim();
 check("negative shortage reads -x, not x-", shortage.startsWith("-"), `got "${shortage}"`);
-const typed = await t("sizes-input").inputValue();
-check("size text stays as typed", typed === "30 32 32 34 34 36", `got "${typed}"`);
-const chipOrder = await page.locator('[data-testid="sizes-input"] ~ div span').allInnerTexts();
-check("chips keep the written order (30 first)", chipOrder[0]?.startsWith("30"),
+const chipOrder = await Promise.all(
+  (await t("size-chip").all()).map((c) => c.getAttribute("data-size"))
+);
+check("chips keep the written order (30 first)", chipOrder[0] === "30",
+      JSON.stringify(chipOrder));
+check("chips are not reversed by RTL", chipOrder.join(",") === "30,32,34,36",
       JSON.stringify(chipOrder));
 await shot("06b-rtl");
 

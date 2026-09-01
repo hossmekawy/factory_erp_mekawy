@@ -36,6 +36,38 @@ export type Issue = {
   line_no: number | null;
 };
 
+// Arabic-Indic digits, so a keyboard set to Arabic produces usable sizes.
+const ARABIC_DIGITS: Record<string, string> = {
+  "٠": "0", "١": "1", "٢": "2", "٣": "3", "٤": "4",
+  "٥": "5", "٦": "6", "٧": "7", "٨": "8", "٩": "9",
+};
+
+/**
+ * Split whatever was typed into individual sizes.
+ *
+ * Accepts what the notebook uses — "(32)(34)" — and what a desktop keyboard
+ * can type — "30 32 32". On a phone the numeric keypad has no space bar at
+ * all, which is why sizes are added one at a time from a staging box rather
+ * than typed as one string; this still parses a whole string when it gets one.
+ */
+export function splitSizes(text: string): string[] {
+  const normalized = (text ?? "")
+    .split("")
+    .map((ch) => ARABIC_DIGITS[ch] ?? ch)
+    .join("");
+  return normalized
+    .split(/[^0-9A-Za-z\u0621-\u064A]+/)
+    .map((t) => (/^[a-z]+$/i.test(t) ? t.toUpperCase() : t))
+    .filter(Boolean);
+}
+
+/** Remove the last occurrence of a size, so tapping × on a ×2 chip leaves ×1. */
+export function removeOneSize(tokens: string[], size: string): string[] {
+  const index = tokens.lastIndexOf(size);
+  if (index === -1) return tokens;
+  return [...tokens.slice(0, index), ...tokens.slice(index + 1)];
+}
+
 export function emptyLine(): LineDraft {
   return {
     key: Math.random().toString(36).slice(2),

@@ -31,6 +31,8 @@ import {
   num,
   quickTotals,
   remnantIsWaste,
+  removeOneSize,
+  splitSizes,
   widthToCm,
 } from "@/lib/cutting";
 
@@ -59,8 +61,13 @@ export default function NewLayPage() {
   const [modelResults, setModelResults] = useState<GarmentModel[]>([]);
   const [addingModel, setAddingModel] = useState(false);
   const [newModelName, setNewModelName] = useState("");
-  const [sizesRaw, setSizesRaw] = useState("");
+  // Sizes are kept as an ordered list of tokens, not one typed string. The
+  // phone's numeric keypad has no space bar, so they cannot be typed as
+  // "30 32 32" on the device this screen exists for; they go in one at a time.
+  const [sizeTokens, setSizeTokens] = useState<string[]>([]);
+  const [sizeEntry, setSizeEntry] = useState("");
   const [chips, setChips] = useState<SizeChip[]>([]);
+  const sizesRaw = sizeTokens.join(" ");
   const [piecesPerPly, setPiecesPerPly] = useState(0);
   const [sizesError, setSizesError] = useState("");
   const [widthRaw, setWidthRaw] = useState("");
@@ -135,8 +142,14 @@ export default function NewLayPage() {
       .catch(() => {});
   }, [startDate, endDate]);
 
+  // Only search once something is typed. Searching on an empty query returned
+  // the whole catalogue and left the dropdown hanging open over the fields
+  // below it the moment the screen loaded.
   useEffect(() => {
-    if (model) return;
+    if (model || !modelQuery.trim()) {
+      setModelResults([]);
+      return;
+    }
     const t = setTimeout(() => {
       api(`/api/cutting/models/?search=${encodeURIComponent(modelQuery)}&page=1`)
         .then((d) => setModelResults(d.results ?? []))
@@ -173,6 +186,16 @@ export default function NewLayPage() {
     return () => clearTimeout(t);
   }, [sizesRaw]);
 
+  const addSizes = (text: string) => {
+    const parsed = splitSizes(text);
+    if (!parsed.length) return;
+    setSizeTokens((current) => [...current, ...parsed]);
+    setSizeEntry("");
+  };
+
+  const dropSize = (size: string) =>
+    setSizeTokens((current) => removeOneSize(current, size));
+
   // SRS 7.2: the model in his hand may not be in the catalogue yet. He can add
   // it without leaving the screen — the backend lets a supervisor create a
   // model but not rewrite one.
@@ -203,8 +226,8 @@ export default function NewLayPage() {
     setModelQuery("");
     setModelResults([]);
     const preset = m.default_size_set_detail?.sizes_raw;
-    if (preset && !sizesRaw.trim()) setSizesRaw(preset);
-  }, [sizesRaw]);
+    if (preset && sizeTokens.length === 0) setSizeTokens(splitSizes(preset));
+  }, [sizeTokens]);
 
   // --- rows -------------------------------------------------------------
 
@@ -492,32 +515,72 @@ export default function NewLayPage() {
           </Row>
 
           <Row label="المقاسات">
-            <input
-              data-testid="sizes-input"
-              dir="ltr"
-              className={`${FIELD} ltr-num`}
-              inputMode="numeric"
-              placeholder="30 32 32 34 34 36"
-              value={sizesRaw}
-              onChange={(e) => setSizesRaw(e.target.value)}
-            />
+            <div className="flex gap-2">
+              <input
+                data-testid="sizes-input"
+                dir="ltr"
+                className={`${FIELD} ltr-num flex-1`}
+                inputMode="numeric"
+                placeholder="32"
+                value={sizeEntry}
+                onChange={(e) => setSizeEntry(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    addSizes(sizeEntry);
+                  }
+                }}
+              />
+              <button
+                type="button"
+                data-testid="add-size"
+                className="btn-secondary min-h-12 shrink-0 px-5"
+                disabled={!sizeEntry.trim()}
+                onClick={() => addSizes(sizeEntry)}
+              >
+                <Plus className="h-4 w-4" />
+                أضف
+              </button>
+            </div>
+
             {sizesError && <p className="mt-1 text-sm text-rose-600">{sizesError}</p>}
+
             {chips.length > 0 && (
               <div dir="ltr" className="mt-2 flex flex-wrap justify-end gap-1.5">
                 {chips.map((c) => (
-                  <span
+                  <button
                     key={c.size}
-                    className="rounded-full bg-slate-100 px-2.5 py-1 text-sm font-semibold text-slate-700"
+                    type="button"
+                    data-testid="size-chip"
+                    data-size={c.size}
+                    onClick={() => dropSize(c.size)}
+                    className="flex items-center gap-1 rounded-full bg-slate-100 px-2.5 py-1.5 text-sm font-semibold text-slate-700 hover:bg-rose-50 hover:text-rose-700"
+                    aria-label={`شيل مقاس ${c.size}`}
                   >
                     {c.size}
                     {c.pieces_in_ply > 1 && (
-                      <span className="ml-1 text-red-600">&times;{c.pieces_in_ply}</span>
+                      <span className="text-red-600">&times;{c.pieces_in_ply}</span>
                     )}
-                  </span>
+                    <X className="h-3 w-3 opacity-40" />
+                  </button>
                 ))}
+                {sizeTokens.length > 0 && (
+                  <button
+                    type="button"
+                    data-testid="clear-sizes"
+                    onClick={() => setSizeTokens([])}
+                    className="px-2 text-xs font-semibold text-slate-400 hover:text-rose-700"
+                  >
+                    مسح الكل
+                  </button>
+                )}
               </div>
             )}
-            <Hint>الدفتر بيكتبها بين أقواس — (32)(34) بتشتغل برضه</Hint>
+
+            <Hint>
+              اكتب المقاس ودوس «أضف» — الكيبورد الرقمي مافيهوش مسافة. كرّر نفس
+              المقاس عادي، ودوس على الشيب عشان تشيله.
+            </Hint>
           </Row>
 
           <div className="grid grid-cols-2 gap-3">
