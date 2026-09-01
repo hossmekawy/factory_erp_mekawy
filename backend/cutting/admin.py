@@ -2,7 +2,7 @@ from django.contrib import admin
 
 from .models import (
     Bank,
-    Fit,
+    Category,
     CuttingSettings,
     GarmentModel,
     Lay,
@@ -28,17 +28,19 @@ class SizeSetAdmin(admin.ModelAdmin):
     readonly_fields = ["total_pieces"]
 
 
-@admin.register(Fit)
-class FitAdmin(admin.ModelAdmin):
-    list_display = ["name", "is_active"]
+@admin.register(Category)
+class CategoryAdmin(admin.ModelAdmin):
+    list_display = ["name", "order", "is_active"]
     search_fields = ["name"]
+    ordering = ["order", "name"]
 
 
 @admin.register(GarmentModel)
 class GarmentModelAdmin(admin.ModelAdmin):
-    list_display = ["code", "name", "category", "fit", "is_active"]
-    search_fields = ["code", "name", "fit__name"]
+    list_display = ["code", "name", "category", "is_active"]
+    search_fields = ["code", "name"]
     list_filter = ["category", "is_active"]
+    readonly_fields = ["code"]   # generated, not typed
 
 
 class LayLineInline(admin.TabularInline):
@@ -54,14 +56,14 @@ class LaySizeBreakdownInline(admin.TabularInline):
 @admin.register(Lay)
 class LayAdmin(admin.ModelAdmin):
     list_display = [
-        "id", "start_date", "end_date", "garment_model", "bank", "team_leader",
+        "code", "start_date", "end_date", "garment_model", "bank", "team_leader",
         "total_plies", "theoretical_pieces", "real_metrage", "deviation_pct", "status",
     ]
     list_filter = [
         "status", "entry_mode", "is_backfill", "has_shortage",
         "has_length_mismatch", "bank",
     ]
-    search_fields = ["garment_model__code", "garment_model__name", "team_leader__full_name"]
+    search_fields = ["code", "garment_model__name", "team_leader__full_name"]
     date_hierarchy = "start_date"
     inlines = [LaySizeBreakdownInline, LayLineInline]
     # Written by services.recalculate — editing them by hand would be a lie.

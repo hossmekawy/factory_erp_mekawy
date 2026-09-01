@@ -89,7 +89,8 @@ type Lay = {
   has_length_mismatch: boolean;
   has_splice: boolean;
   bank_detail: { code: string; name: string };
-  garment_model_detail: { code: string; name: string; fit: string };
+  code: string;
+  garment_model_detail: { code: string; name: string; category_label: string };
   team_leader_detail: { full_name: string; employee_code: string };
   entered_by_name: string;
   lines: Line[];
@@ -191,10 +192,10 @@ function Detail({ id }: { id: string }) {
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
             <h1 className="text-xl font-bold">
-              <bdi>{m.code}</bdi>{" "}
+              <bdi>{lay.code}</bdi>{" "}
               <span className="font-normal text-slate-500">
                 <bdi>{m.name}</bdi>
-                {m.fit && ` · ${m.fit}`}
+                {m.category_label && ` · ${m.category_label}`}
               </span>
             </h1>
             <p className="mt-1 text-sm text-slate-500" dir="ltr">

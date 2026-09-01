@@ -23,9 +23,10 @@ type Row = {
   start_date: string;
   end_date: string;
   is_multi_day: boolean;
+  code: string;
   garment_model_code: string;
   garment_model_name: string;
-  fit: string;
+  category: string;
   bank_name: string;
   team_leader_name: string;
   theoretical_pieces: number;
@@ -231,10 +232,10 @@ function CountCard({
       >
         <div className="flex-1">
           <div className="font-bold">
-            <bdi>{row.garment_model_code}</bdi>{" "}
+            <bdi>{row.code}</bdi>{" "}
             <span className="font-normal text-slate-500">
               <bdi>{row.garment_model_name}</bdi>
-              {row.fit && ` · ${row.fit}`}
+              {row.category && ` · ${row.category}`}
             </span>
           </div>
           <div className="text-xs text-slate-500">

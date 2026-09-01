@@ -99,11 +99,21 @@ check("ميتراج>99 finds none", none === 0, String(none));
 console.log("\n4. the filter drawer writes to the URL");
 await go("/cutting");
 await page.getByRole("button", { name: /فلاتر/ }).click();
+const drawer = page.getByTestId("filter-drawer");
+await drawer.waitFor({ timeout: 10000 });
 // scope to the drawer: "الحالة" is also a table column header
-await page.locator("aside").getByRole("button", { name: "الحالة" }).click();
-await page.locator("aside select").first().selectOption("closed");
-await page.waitForTimeout(800);
-check("status landed in the URL", page.url().includes("status=closed"), page.url());
+await drawer.getByRole("button", { name: "الحالة" }).click();
+// The group renders its controls after the toggle; wait for the select rather
+// than assuming it is already there.
+const statusSelect = drawer.locator("select").first();
+await statusSelect.waitFor({ timeout: 10000 });
+await statusSelect.selectOption("closed");
+// Wait for the URL, not a sleep — router.replace lands asynchronously.
+const inUrl = await page
+  .waitForURL(/status=closed/, { timeout: 8000 })
+  .then(() => true)
+  .catch(() => false);
+check("status landed in the URL", inUrl, page.url());
 await shot("d4-drawer");
 await page.getByRole("button", { name: "عرض النتائج" }).click();
 await page.waitForTimeout(600);
@@ -160,13 +170,20 @@ await shot("d8-detail");
 
 // ---------------------------------------------------------------- 9
 console.log("\n9. the notebook photo opens full size");
-const photo = page.locator('img[alt="ورقة الدفتر"]');
-if (await photo.count()) {
+// Open a lay that actually has one rather than whichever sorted first.
+const withPhoto = await (await fetch(
+  `${BASE}/api/cutting/lays/?has_sheet_image=true&page_size=1`,
+  { headers: { Authorization: `Bearer ${tok.access}` } }
+)).json();
+if (withPhoto.count > 0) {
+  await go(`/cutting/${withPhoto.results[0].id}`);
+  const photo = page.locator('img[alt="ورقة الدفتر"]');
+  await photo.waitFor({ timeout: 15000 });
   await photo.click();
   await page.waitForTimeout(500);
   check("zoom overlay opened", await page.locator(".fixed.z-50 img").isVisible());
   await page.locator(".fixed.z-50").click({ position: { x: 10, y: 10 } });
-} else check("zoom overlay opened", false, "no sheet image on this lay");
+} else check("zoom overlay opened", false, "no lay in the data has a sheet image");
 
 // ---------------------------------------------------------------- 10
 console.log("\n10. the list works on a phone");

@@ -89,8 +89,9 @@ async function setSizes(text) {
   await page.waitForTimeout(700); // debounce + server parse
 }
 
-async function fillHeader({ model = "1749", sizes = "30 32 32 34 34 36",
+async function fillHeader({ model = "كارل رجالي", sizes = "30 32 32 34 34 36",
                             width = "1.62", length = "6.55", end = null }) {
+  await t("lay-code").fill("T" + String(Date.now()).slice(-8) + Math.floor(Math.random() * 99));
   await pickModel(model);
   await setSizes(sizes);
   await t("width-input").fill(width);
@@ -182,7 +183,7 @@ check("162 also reads as 162 cm", (await t("width-hint").innerText()).includes("
 // ---------------------------------------------------------------- 4
 console.log("\n4. Arabic-Indic digits in the size box");
 await fresh();
-await pickModel("1749");
+await pickModel("كارل رجالي");
 await setSizes("٣٠ ٣٢ ٣٢ ٣٤ ٣٤ ٣٦");
 check("٣٠ ٣٢ … parsed to 6", (await t("pieces-per-ply").innerText()).includes("6"));
 
@@ -293,12 +294,14 @@ check("multi-day lay closed", (await closeLay("فرشة يومين")).closed);
 // ---------------------------------------------------------------- 12
 console.log("\n12. quick-add a model that is not in the catalogue");
 await fresh();
-// A code that cannot already be in the catalogue, so the run repeats cleanly.
-const newCode = "9" + String(Date.now()).slice(-6);
-await t("model-search").fill(newCode);
+// A name that cannot already be in the catalogue, so the run repeats cleanly.
+const newName = "موديل اختبار " + String(Date.now()).slice(-6);
+await t("model-search").fill(newName);
 await t("quick-add-model").waitFor({ timeout: 8000 });
+check("adding is blocked until a section is picked", await t("quick-add-model").isDisabled());
+await t("new-model-category").selectOption({ index: 1 });
 await t("quick-add-model").click();
-await page.getByText(newCode).first().waitFor({ timeout: 10000 });
+await page.getByText(newName).first().waitFor({ timeout: 10000 });
 check("model added from the screen", true);
 await shot("12-quick-add");
 

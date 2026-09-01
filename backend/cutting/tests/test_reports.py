@@ -34,7 +34,8 @@ class TestMetrage:
         assert report["title"] == "الميتراج لكل موديل"
         assert len(report["rows"]) == 1  # all three share one model
         row = report["rows"][0]
-        assert row["code"] == "1749"
+        assert row["name"] == "كارل رجالي"
+        assert row["category"] == "رجالي"
         assert row["lays"] == 2  # the backfilled one is excluded
 
     def test_backfilled_lays_are_excluded_unless_asked_for(self, spread):
@@ -49,8 +50,8 @@ class TestMetrage:
 class TestShortage:
     def test_only_lays_over_tolerance_appear(self, spread):
         report = reports.shortage_report()
-        ids = [r["lay_id"] for r in report["rows"]]
-        assert ids == [spread["short"].pk]
+        codes = [r["code"] for r in report["rows"]]
+        assert codes == [spread["short"].code]
 
     def test_it_carries_the_article_and_lot(self, spread):
         row = reports.shortage_report()["rows"][0]

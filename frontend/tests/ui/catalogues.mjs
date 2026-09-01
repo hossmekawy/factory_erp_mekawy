@@ -45,19 +45,19 @@ const shot = (n) => SHOTS ? page.screenshot({ path: path.join(SHOTS, `${n}.png`)
 const rows = () => page.locator("tbody tr").count();
 
 // ---------------------------------------------------------------- 1
-console.log("\n1. the fit catalogue lists, adds, renames");
-await page.goto(`${BASE}/cutting/fits`, { waitUntil: "networkidle" });
+console.log("\n1. the section catalogue lists, adds, renames");
+await page.goto(`${BASE}/cutting/categories`, { waitUntil: "networkidle" });
 await page.waitForTimeout(800);
 const before = await rows();
-check("fits load", before > 0, String(before));
+check("sections load", before > 0, String(before));
 
-const newFit = "بوت كت " + String(Date.now()).slice(-5);
+const newFit = "قسم اختبار " + String(Date.now()).slice(-5);
 await page.getByRole("button", { name: "إضافة" }).click();
 await t("field-name").fill(newFit);
 await t("save-row").click();
 await page.waitForTimeout(1200);
 check("added", (await rows()) === before + 1, `${await rows()} vs ${before + 1}`);
-await shot("f1-fits");
+await shot("f1-categories");
 
 // ---------------------------------------------------------------- 2
 console.log("\n2. a duplicate name is refused, in the dialog");
@@ -70,13 +70,13 @@ await shot("f2-duplicate");
 await page.getByRole("button", { name: "إلغاء" }).click();
 
 // ---------------------------------------------------------------- 3
-console.log("\n3. renaming a fit renames it on every model that uses it");
-const fitsList = await (await fetch(`${BASE}/api/cutting/fits/?page_size=200`,
+console.log("\n3. renaming a section renames it on every model that uses it");
+const catList = await (await fetch(`${BASE}/api/cutting/categories/?page_size=200`,
   { headers: { Authorization: `Bearer ${adminTok.access}` } })).json();
-const used = (fitsList.results ?? fitsList).find((f) => f.model_count > 0);
+const used = (catList.results ?? catList).find((f) => f.model_count > 0);
 if (used) {
   const renamed = used.name + "-م";
-  await page.goto(`${BASE}/cutting/fits`, { waitUntil: "networkidle" });
+  await page.goto(`${BASE}/cutting/categories`, { waitUntil: "networkidle" });
   await page.waitForTimeout(700);
   const rowIndex = (await page.locator("tbody tr").allInnerTexts())
     .findIndex((tx) => tx.includes(used.name));
@@ -87,15 +87,15 @@ if (used) {
 
   const models = await (await fetch(`${BASE}/api/cutting/models/?page_size=200`,
     { headers: { Authorization: `Bearer ${adminTok.access}` } })).json();
-  const touched = (models.results ?? models).filter((m) => m.fit === used.id);
+  const touched = (models.results ?? models).filter((m) => m.category === used.id);
   check("every model shows the new name",
-        touched.length > 0 && touched.every((m) => m.fit_name === renamed),
-        JSON.stringify(touched.map((m) => m.fit_name)));
-} else check("every model shows the new name", false, "no fit in use to rename");
+        touched.length > 0 && touched.every((m) => m.category_label === renamed),
+        JSON.stringify(touched.map((m) => m.category_label)));
+} else check("every model shows the new name", false, "no section in use to rename");
 
 // ---------------------------------------------------------------- 4
-console.log("\n4. a fit still in use cannot be deleted");
-const res4 = await fetch(`${BASE}/api/cutting/fits/${used.id}/`, {
+console.log("\n4. a section still in use cannot be deleted");
+const res4 = await fetch(`${BASE}/api/cutting/categories/${used.id}/`, {
   method: "DELETE", headers: { Authorization: `Bearer ${adminTok.access}` },
 });
 check("refused with 400", res4.status === 400, String(res4.status));
@@ -103,19 +103,23 @@ const body4 = await res4.json();
 check("and says why in Arabic", /مينفعش/.test(body4.detail), JSON.stringify(body4));
 
 // ---------------------------------------------------------------- 5
-console.log("\n5. the model catalogue: duplicate code refused, junk model fixable");
+console.log("\n5. the model catalogue: a section is required, a mistyped name is fixable");
 await page.goto(`${BASE}/cutting/models`, { waitUntil: "networkidle" });
 await page.waitForTimeout(900);
 const modelRows = await rows();
 check("models load", modelRows > 0, String(modelRows));
 
 await page.getByRole("button", { name: "إضافة" }).click();
-await t("field-code").fill("1749");
-await t("field-name").fill("مكرر");
-await t("save-row").click();
-await page.waitForTimeout(1000);
-check("duplicate code refused", await t("error-code").isVisible());
-await shot("f5-dupcode");
+await t("field-name").fill("موديل بدون قسم " + String(Date.now()).slice(-5));
+await page.waitForTimeout(300);
+// The section is required, so saving is blocked before the request is made.
+check("a model without a section cannot be saved", await t("save-row").isDisabled());
+// And the code is never asked for — it is generated.
+check("no code field in the dialog", (await t("field-code").count()) === 0);
+await t("field-category").selectOption({ index: 1 });
+await page.waitForTimeout(300);
+check("picking a section unlocks saving", !(await t("save-row").isDisabled()));
+await shot("f5-model-dialog");
 await page.getByRole("button", { name: "إلغاء" }).click();
 
 // rename the first model — the "I named it wrong" case

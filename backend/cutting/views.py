@@ -12,7 +12,7 @@ import datetime
 from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db.models import ProtectedError
 from django.http import HttpResponse
-from django.db import models
+from django.db import models, transaction
 from django.db.models import Avg, Count, Prefetch, Sum
 from rest_framework import status, viewsets
 from rest_framework.decorators import action, api_view, permission_classes
@@ -29,7 +29,7 @@ from . import validators
 from .models import (
     Bank,
     CuttingSettings,
-    Fit,
+    Category,
     GarmentModel,
     Lay,
     LayLine,
@@ -48,7 +48,7 @@ from .serializers import (
     BankSerializer,
     CloseLaySerializer,
     CuttingSettingsSerializer,
-    FitSerializer,
+    CategorySerializer,
     GarmentModelSerializer,
     LayLineSerializer,
     LayListSerializer,
@@ -152,21 +152,21 @@ class SizeSetViewSet(ServiceErrorMixin, viewsets.ModelViewSet):
         })
 
 
-class FitViewSet(ServiceErrorMixin, viewsets.ModelViewSet):
-    """The cut catalogue. Renaming one here renames it on every model at once,
-    which is the whole reason it stopped being free text."""
+class CategoryViewSet(ServiceErrorMixin, viewsets.ModelViewSet):
+    """The sections the factory sorts its models into. Renaming one here
+    renames it on every model that carries it."""
 
-    serializer_class = FitSerializer
+    serializer_class = CategorySerializer
     permission_classes = [CanAddToCatalogue]
     filterset_fields = ["is_active"]
     search_fields = ["name", "notes"]
-    ordering_fields = ["name", "created_at"]
+    ordering_fields = ["name", "order", "created_at"]
     # Annotating drops the model's Meta ordering, and an unordered queryset
     # paginates inconsistently.
-    ordering = ["name"]
+    ordering = ["order", "name"]
 
     def get_queryset(self):
-        return Fit.objects.annotate(model_count=Count("models", distinct=True))
+        return Category.objects.annotate(model_count=Count("models", distinct=True))
 
 
 class GarmentModelViewSet(ServiceErrorMixin, viewsets.ModelViewSet):
@@ -177,12 +177,12 @@ class GarmentModelViewSet(ServiceErrorMixin, viewsets.ModelViewSet):
 
     def get_queryset(self):
         return GarmentModel.objects.select_related(
-            "default_size_set", "fit"
+            "default_size_set", "category"
         ).annotate(lay_count=Count("lays", distinct=True))
-    filterset_fields = ["category", "fit", "is_active"]
-    search_fields = ["code", "name", "fit__name"]
+    filterset_fields = ["category", "is_active"]
+    search_fields = ["name", "code"]   # name first: models are found by name
     ordering_fields = ["code", "name", "created_at"]
-    ordering = ["code"]
+    ordering = ["name"]
 
 
 class CuttingSettingsViewSet(ServiceErrorMixin, viewsets.ModelViewSet):
@@ -200,7 +200,7 @@ class LayViewSet(ServiceErrorMixin, viewsets.ModelViewSet):
     permission_classes = [CanEditLays]
     filterset_class = filters.LayFilter
     search_fields = [
-        "garment_model__code", "garment_model__name", "garment_model__fit__name",
+        "code", "garment_model__name", "garment_model__code",
         "team_leader__full_name", "notes",
         "lines__article", "lines__shade_note", "lines__lot_no", "lines__roll_no",
     ]
@@ -246,8 +246,21 @@ class LayViewSet(ServiceErrorMixin, viewsets.ModelViewSet):
         lay = self.get_object()
         body = CloseLaySerializer(data=request.data)
         body.is_valid(raise_exception=True)
+        data = body.validated_data
 
-        result = services.close_lay(lay, request.user, body.validated_data["reason"])
+        # Closing and counting go in one transaction when the count came with
+        # the request: a failure in the second half must not leave a lay
+        # closed with a count that never landed.
+        with transaction.atomic():
+            result = services.close_lay(lay, request.user, data["reason"])
+            if data.get("actual_pieces") is not None:
+                services.record_output(
+                    lay,
+                    request.user,
+                    actual_pieces=data["actual_pieces"],
+                    rejected_pieces=data["rejected_pieces"],
+                    notes=data["output_notes"],
+                )
         lay.refresh_from_db()
         return Response({
             "lay": LaySerializer(lay, context=self.get_serializer_context()).data,
@@ -384,12 +397,11 @@ class LayViewSet(ServiceErrorMixin, viewsets.ModelViewSet):
         qs = self.filter_queryset(self.get_queryset())
         rows = [
             {
-                "id": lay.pk,
+                "code": lay.code,
                 "date": (
                     f"{lay.start_date} → {lay.end_date}"
                     if lay.is_multi_day else str(lay.start_date)
                 ),
-                "code": lay.garment_model.code,
                 "model": lay.garment_model.name,
                 "sizes": " ".join(b.size for b in lay.size_breakdown.all()),
                 "lay_length_m": lay.lay_length_m,
@@ -414,7 +426,7 @@ class LayViewSet(ServiceErrorMixin, viewsets.ModelViewSet):
                 "end": request.query_params.get("date_to"),
             },
             "columns": [
-                ("id", "#"), ("date", "التاريخ"), ("code", "الكود"), ("model", "الموديل"),
+                ("code", "كود القصة"), ("date", "التاريخ"), ("model", "الموديل"),
                 ("sizes", "المقاسات"), ("lay_length_m", "طول الفرشة"),
                 ("pieces_per_ply", "ق/راق"), ("total_plies", "إجمالي الراق"),
                 ("theoretical_pieces", "القطع النظرية"), ("actual_pieces", "القطع الفعلية"),

@@ -37,7 +37,8 @@ import {
 } from "@/lib/cutting";
 
 type Bank = { id: number; code: string; name: string };
-type GarmentModel = { id: number; code: string; name: string; fit_name: string };
+type GarmentModel = { id: number; code: string; name: string; category_label: string };
+type Category = { id: number; name: string };
 type TeamLeader = {
   id: number;
   employee_code: string;
@@ -54,13 +55,17 @@ export default function NewLayPage() {
   const router = useRouter();
 
   // --- header, in notebook order ---------------------------------------
+  // The number written at the top of the notebook page. It belongs to this
+  // cutting run, not to the model — the same model is cut many times.
+  const [layCode, setLayCode] = useState("");
   const [startDate, setStartDate] = useState(today());
   const [endDate, setEndDate] = useState("");
   const [modelQuery, setModelQuery] = useState("");
   const [model, setModel] = useState<GarmentModel | null>(null);
   const [modelResults, setModelResults] = useState<GarmentModel[]>([]);
   const [addingModel, setAddingModel] = useState(false);
-  const [newModelName, setNewModelName] = useState("");
+  const [newModelCategory, setNewModelCategory] = useState<number | "">("");
+  const [categories, setCategories] = useState<Category[]>([]);
   // Sizes are kept as an ordered list of tokens, not one typed string. The
   // phone's numeric keypad has no space bar, so they cannot be typed as
   // "30 32 32" on the device this screen exists for; they go in one at a time.
@@ -85,6 +90,12 @@ export default function NewLayPage() {
   const [quickMetres, setQuickMetres] = useState("");
   const [quickPlies, setQuickPlies] = useState("");
   const [notes, setNotes] = useState("");
+
+  // Counting is normally a separate job done later, but when the pieces are
+  // already known there is no sense making him come back to a second screen
+  // for two numbers. Left blank, the lay goes to the counting screen as before.
+  const [goodPieces, setGoodPieces] = useState("");
+  const [rejectedPieces, setRejectedPieces] = useState("");
 
   // --- sheet photo ------------------------------------------------------
   const [sheet, setSheet] = useState<File | null>(null);
@@ -121,6 +132,9 @@ export default function NewLayPage() {
   useEffect(() => {
     api("/api/cutting/banks/?is_active=true")
       .then((d) => setBanks(d.results ?? d))
+      .catch(() => {});
+    api("/api/cutting/categories/?page_size=200")
+      .then((d) => setCategories(d.results ?? d))
       .catch(() => {});
     api("/api/cutting/settings/1/")
       .then((d) => {
@@ -199,19 +213,21 @@ export default function NewLayPage() {
   // SRS 7.2: the model in his hand may not be in the catalogue yet. He can add
   // it without leaving the screen — the backend lets a supervisor create a
   // model but not rewrite one.
+  // The model is saved under the name he just typed — "كارل رجالي" — because
+  // that is what he will search for next time. Its code is generated.
   const quickAddModel = async () => {
-    const code = modelQuery.trim();
-    if (!code) return;
+    const name = modelQuery.trim();
+    if (!name || newModelCategory === "") return;
     setAddingModel(true);
     setError("");
     try {
       const created = await api("/api/cutting/models/", {
         method: "POST",
-        body: JSON.stringify({ code, name: newModelName.trim() || code }),
+        body: JSON.stringify({ name, category: newModelCategory }),
       });
       setModel(created);
       setModelQuery("");
-      setNewModelName("");
+      setNewModelCategory("");
       setModelResults([]);
     } catch (e) {
       setError(errorText(e));
@@ -277,6 +293,7 @@ export default function NewLayPage() {
   };
 
   const missing = (): string | null => {
+    if (!layCode.trim()) return "اكتب كود القصة";
     if (!model) return "اختار الموديل";
     if (!piecesPerPly) return "اكتب المقاسات";
     if (!widthCm) return "اكتب عرض الفرشة";
@@ -293,6 +310,7 @@ export default function NewLayPage() {
       await api(`/api/cutting/lays/${savedId}/`, {
         method: "PATCH",
         body: JSON.stringify({
+          code: layCode.trim(),
           start_date: startDate,
           end_date: endDate || startDate,
           bank: bankId,
@@ -311,6 +329,7 @@ export default function NewLayPage() {
     const created = await api("/api/cutting/lays/", {
       method: "POST",
       body: JSON.stringify({
+        code: layCode.trim(),
         start_date: startDate,
         end_date: endDate || startDate,
         bank: bankId,
@@ -359,7 +378,17 @@ export default function NewLayPage() {
       }
       await api(`/api/cutting/lays/${id}/close/`, {
         method: "POST",
-        body: JSON.stringify({ reason }),
+        body: JSON.stringify({
+          reason,
+          // Only sent when he actually typed a count; otherwise the lay goes
+          // to the counting screen untouched.
+          ...(goodPieces.trim()
+            ? {
+                actual_pieces: Math.round(num(goodPieces)),
+                rejected_pieces: Math.round(num(rejectedPieces)) || 0,
+              }
+            : {}),
+        }),
       });
       setDone(true);
     } catch (e) {
@@ -408,38 +437,57 @@ export default function NewLayPage() {
     <Shell>
       {/* pb leaves room for the fixed calculation bar */}
       <div className="font-tajawal mx-auto max-w-2xl p-3 pb-44">
-        <h1 className="mb-3 text-lg font-bold">فرشة جديدة</h1>
+        <h1 className="mb-3 text-lg font-bold">قصة جديدة</h1>
 
         {/* ---- header: the notebook's own order ---- */}
         <section className="card space-y-3">
           <Row label="التاريخ">
-            <div className="flex items-center gap-2">
-              <input
-                type="date"
-                className={FIELD}
-                value={startDate}
-                onChange={(e) => setStartDate(e.target.value)}
-              />
-              <span className="shrink-0 text-sm text-slate-400">→</span>
-              <input
-                type="date"
-                className={FIELD}
-                value={endDate}
-                min={startDate}
-                onChange={(e) => setEndDate(e.target.value)}
-              />
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <span className="mb-1 block text-xs font-semibold text-slate-500">من</span>
+                <input
+                  data-testid="start-date"
+                  type="date"
+                  className={FIELD}
+                  value={startDate}
+                  onChange={(e) => setStartDate(e.target.value)}
+                />
+              </div>
+              <div>
+                <span className="mb-1 block text-xs font-semibold text-slate-500">إلى</span>
+                <input
+                  data-testid="end-date"
+                  type="date"
+                  className={FIELD}
+                  value={endDate}
+                  min={startDate}
+                  onChange={(e) => setEndDate(e.target.value)}
+                />
+              </div>
             </div>
-            <Hint>سيب التاريخ التاني فاضي لو الفرشة يوم واحد</Hint>
+            <Hint>سيب «إلى» فاضي لو القصة يوم واحد</Hint>
+          </Row>
+
+          <Row label="كود القصة">
+            <input
+              data-testid="lay-code"
+              dir="ltr"
+              className={`${FIELD} ltr-num`}
+              inputMode="numeric"
+              placeholder="1749"
+              value={layCode}
+              onChange={(e) => setLayCode(e.target.value)}
+            />
+            <Hint>الرقم اللي فوق صفحة الدفتر — كود القصة دي هي، مش كود الموديل</Hint>
           </Row>
 
           <Row label="الكود / الموديل">
             {model ? (
               <div className="flex items-center justify-between rounded-lg border border-slate-300 bg-slate-50 px-3 py-2">
                 <span className="font-semibold">
-                  <bdi>{model.code}</bdi>
+                  <bdi>{model.name}</bdi>
                   <span className="mr-2 text-sm font-normal text-slate-500">
-                    <bdi>{model.name}</bdi>
-                    {model.fit_name && <> · {model.fit_name}</>}
+                    {model.category_label}
                   </span>
                 </span>
                 <button
@@ -454,10 +502,8 @@ export default function NewLayPage() {
               <div className="relative">
                 <input
                   data-testid="model-search"
-                  dir="ltr"
-                  className={`${FIELD} ltr-num`}
-                  inputMode="numeric"
-                  placeholder="اكتب الكود أو اسم الموديل…"
+                  className={FIELD}
+                  placeholder="اكتب اسم الموديل… مثلاً كارل رجالي"
                   value={modelQuery}
                   onChange={(e) => setModelQuery(e.target.value)}
                 />
@@ -470,11 +516,8 @@ export default function NewLayPage() {
                         className="block w-full px-3 py-3 text-right hover:bg-red-50"
                         onClick={() => pickModel(m)}
                       >
-                        <bdi className="font-semibold">{m.code}</bdi>{" "}
-                        <span className="text-sm text-slate-500">
-                          <bdi>{m.name}</bdi>
-                          {m.fit_name && <> · {m.fit_name}</>}
-                        </span>
+                        <bdi className="font-semibold">{m.name}</bdi>{" "}
+                        <span className="text-sm text-slate-500">{m.category_label}</span>
                       </button>
                     ))}
                   </div>
@@ -482,21 +525,30 @@ export default function NewLayPage() {
                 {modelQuery.trim() && modelResults.length === 0 && (
                   <div className="mt-2 rounded-lg border border-dashed border-slate-300 p-3">
                     <p className="text-sm text-slate-600">
-                      مفيش موديل بالكود{" "}
+                      مفيش موديل اسمه{" "}
                       <span className="font-bold">{modelQuery.trim()}</span>
                     </p>
-                    <input
-                      data-testid="new-model-name"
-                      className={`${FIELD} mt-2`}
-                      placeholder="اسم الموديل (اختياري)"
-                      value={newModelName}
-                      onChange={(e) => setNewModelName(e.target.value)}
-                    />
+                    <label className="mt-2 !text-xs">القسم — مطلوب</label>
+                    <select
+                      data-testid="new-model-category"
+                      className={FIELD}
+                      value={newModelCategory}
+                      onChange={(e) =>
+                        setNewModelCategory(e.target.value ? Number(e.target.value) : "")
+                      }
+                    >
+                      <option value="">اختار…</option>
+                      {categories.map((c) => (
+                        <option key={c.id} value={c.id}>
+                          {c.name}
+                        </option>
+                      ))}
+                    </select>
                     <button
                       type="button"
                       data-testid="quick-add-model"
                       className="btn-secondary mt-2 w-full"
-                      disabled={addingModel}
+                      disabled={addingModel || newModelCategory === ""}
                       onClick={quickAddModel}
                     >
                       {addingModel ? (
@@ -872,6 +924,42 @@ export default function NewLayPage() {
             </button>
           )}
           <p className="mt-2 text-xs text-amber-700">إلزامية قبل القفل</p>
+        </section>
+
+        {/* Optional: only when the pieces are already counted. */}
+        <section className="card mt-3">
+          <div className="mb-2 flex items-baseline justify-between gap-2">
+            <label className="!mb-0">القطع الفعلية</label>
+            <span className="text-xs text-slate-400">اختياري</span>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="!text-xs">السليمة</label>
+              <input
+                data-testid="good-pieces"
+                dir="ltr"
+                className={`${FIELD} ltr-num`}
+                inputMode="numeric"
+                value={goodPieces}
+                onChange={(e) => setGoodPieces(e.target.value)}
+              />
+            </div>
+            <div>
+              <label className="!text-xs">التالف</label>
+              <input
+                data-testid="rejected-pieces"
+                dir="ltr"
+                className={`${FIELD} ltr-num`}
+                inputMode="numeric"
+                value={rejectedPieces}
+                onChange={(e) => setRejectedPieces(e.target.value)}
+              />
+            </div>
+          </div>
+          <Hint>
+            سيبها فاضية لو الترقيم لسه ماتعملش — القصة هتستنى في شاشة الترقيم.
+            لو دخّلتها هنا، بتتسجّل باسمك مع القفل.
+          </Hint>
         </section>
 
         <section className="card mt-3">

@@ -6,6 +6,7 @@ adds up, and a sheet image. Each test then breaks exactly the one thing it is
 about.
 """
 import datetime
+import itertools
 from decimal import Decimal
 
 import pytest
@@ -19,7 +20,7 @@ from hr.models import Employee
 from cutting.models import (
     Bank,
     CuttingSettings,
-    Fit,
+    Category,
     GarmentModel,
     Lay,
     LayLine,
@@ -27,6 +28,9 @@ from cutting.models import (
 )
 
 TODAY = datetime.date(2026, 8, 20)
+
+# Every lay carries its own cutting-run code, and it is unique.
+_lay_code_counter = itertools.count(1)
 
 # A 1x1 GIF — the smallest thing ImageField will accept as a sheet photo.
 TINY_GIF = (
@@ -68,14 +72,17 @@ def size_set(db):
 
 
 @pytest.fixture
-def fit(db):
-    return Fit.objects.create(name="سليم")
+def category(db):
+    # The migration seeds the factory's sections, so take the one that is
+    # already there rather than colliding with it.
+    return Category.objects.get_or_create(name="رجالي", defaults={"order": 1})[0]
 
 
 @pytest.fixture
-def garment_model(db, size_set, fit):
+def garment_model(db, size_set, category):
+    # No code passed: it is generated. Models are found by name.
     return GarmentModel.objects.create(
-        code="1749", name="karl", category="men", fit=fit, default_size_set=size_set
+        name="كارل رجالي", category=category, default_size_set=size_set
     )
 
 
@@ -107,6 +114,7 @@ def make_lay(db, bank, garment_model, leader, user, size_set, sheet_image):
         lines=None,
         *,
         lay_length_m="4.95",
+        code=None,
         sizes_raw=None,
         start_date=TODAY,
         end_date=None,
@@ -121,6 +129,7 @@ def make_lay(db, bank, garment_model, leader, user, size_set, sheet_image):
             active_set = SizeSet.objects.create(name=f"طقم {sizes_raw}", sizes_raw=sizes_raw)
 
         lay = Lay.objects.create(
+            code=code or f"L{next(_lay_code_counter)}",
             start_date=start_date,
             end_date=end_date or start_date,
             bank=bank,

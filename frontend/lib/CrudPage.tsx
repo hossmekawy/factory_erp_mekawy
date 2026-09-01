@@ -206,10 +206,13 @@ function EditDialog<T extends { id: number }>({
         method: row ? "PATCH" : "POST",
         body: JSON.stringify(
           Object.fromEntries(
-            config.fields.map((f) => {
+            config.fields.flatMap((f) => {
               const raw = values[f.name] ?? "";
-              if (raw !== "") return [f.name, raw];
-              return [f.name, f.nullable ? null : ""];
+              if (raw !== "") return [[f.name, raw]];
+              // An empty number is not the string "" — the API rejects that
+              // outright. Leave the key out and let the model's default stand.
+              if (f.kind === "number") return [];
+              return [[f.name, f.nullable ? null : ""]];
             })
           )
         ),

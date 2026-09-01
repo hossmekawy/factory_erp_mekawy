@@ -1,34 +1,38 @@
 "use client";
 
-// The cut catalogue. Renaming a cut here renames it on every model that uses
-// it, which is why it stopped being free text on GarmentModel.
+// The sections the factory sorts its models into — رجالي · حريمي · مواليد ·
+// رجالي جامبو … Renaming one here renames it on every model that carries it,
+// and every model must carry one: it is the axis the reports are read along.
 
 import { useEffect, useState } from "react";
 import Shell from "@/components/Shell";
 import CrudPage, { CrudConfig } from "@/lib/CrudPage";
 import { api } from "@/lib/api";
 
-type Fit = {
+type Category = {
   id: number;
   name: string;
   notes: string;
+  order: number;
   is_active: boolean;
   model_count: number;
 };
 
-const config: CrudConfig<Fit> = {
-  title: "القَصّات",
-  endpoint: "/api/cutting/fits/",
-  searchPlaceholder: "ابحث عن قَصّة…",
-  emptyText: "مفيش قَصّات مسجّلة",
+const config: CrudConfig<Category> = {
+  title: "الأقسام",
+  endpoint: "/api/cutting/categories/",
+  searchPlaceholder: "ابحث عن قسم…",
+  emptyText: "مفيش أقسام مسجّلة",
   usageCount: (row) => row.model_count,
   usageLabel: "موديل",
   fields: [
-    { name: "name", label: "القَصّة", required: true, placeholder: "سليم" },
+    { name: "name", label: "القسم", required: true, placeholder: "رجالي خاص" },
+    { name: "order", label: "الترتيب", kind: "number", ltr: true,
+      hint: "الأصغر بيظهر الأول في القوايم" },
     { name: "notes", label: "ملاحظات" },
   ],
   columns: [
-    { label: "القَصّة", render: (r) => <span className="font-semibold">{r.name}</span> },
+    { label: "القسم", render: (r) => <span className="font-semibold">{r.name}</span> },
     { label: "ملاحظات", render: (r) => r.notes || "—" },
     {
       label: "الموديلات",

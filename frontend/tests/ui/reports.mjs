@@ -91,8 +91,40 @@ check("list exports to Excel", dl.suggestedFilename().endsWith(".xlsx"),
 
 // ---------------------------------------------------------------- 6
 console.log("\n6. the bell shows unread alerts and the page clears them");
-const unreadBefore = (await (await fetch(
-  `${BASE}/api/cutting/notifications/unread_count/`, { headers: auth })).json()).unread;
+// A previous run may have marked everything read, so make an alert rather
+// than depending on one being left over: close a lay whose rolls do not add
+// up, which is a shortage past tolerance.
+async function raiseAnAlert() {
+  const models = await (await fetch(`${BASE}/api/cutting/models/?page_size=1`,
+    { headers: auth })).json();
+  const leaders = await (await fetch(`${BASE}/api/cutting/team-leaders/`,
+    { headers: auth })).json();
+  const banks = await (await fetch(`${BASE}/api/cutting/banks/`, { headers: auth })).json();
+  const body = {
+    code: "RPT" + String(Date.now()).slice(-9),
+    start_date: "2026-09-01",
+    bank: (banks.results ?? banks)[0].id,
+    garment_model: models.results[0].id,
+    team_leader: leaders[0].id,
+    lay_width_cm: "162", lay_length_m: "6.55", sizes_raw: "30 32",
+    lines: [{ roll_length_m: "130.00", plies: 16, remnant_m: "0.50" }],
+  };
+  const made = await (await fetch(`${BASE}/api/cutting/lays/`, {
+    method: "POST", headers: { ...auth, "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  })).json();
+  await fetch(`${BASE}/api/cutting/lays/${made.id}/close/`, {
+    method: "POST", headers: { ...auth, "Content-Type": "application/json" },
+    body: JSON.stringify({ reason: "اختبار التنبيهات" }),
+  });
+}
+
+const unreadCount = async () =>
+  (await (await fetch(`${BASE}/api/cutting/notifications/unread_count/`,
+    { headers: auth })).json()).unread;
+
+if ((await unreadCount()) === 0) await raiseAnAlert();
+const unreadBefore = await unreadCount();
 check("there are alerts to see", unreadBefore > 0, String(unreadBefore));
 
 await page.goto(`${BASE}/cutting`, { waitUntil: "networkidle" });
@@ -109,9 +141,7 @@ await shot("g6-notifications");
 
 await t("mark-all-read").click();
 await page.waitForTimeout(1500);
-const after = (await (await fetch(
-  `${BASE}/api/cutting/notifications/unread_count/`, { headers: auth })).json()).unread;
-check("marking read clears the count", after === 0, String(after));
+check("marking read clears the count", (await unreadCount()) === 0);
 
 // ---------------------------------------------------------------- 7
 console.log("\n7. each person only sees their own alerts");

@@ -30,9 +30,9 @@ class LayFilter(df.FilterSet):
     # --- model ----------------------------------------------------------
     garment_model = NumberInFilter(field_name="garment_model_id", lookup_expr="in")
     model_code = CharInFilter(field_name="garment_model__code", lookup_expr="in")
-    fit = CharInFilter(field_name="garment_model__fit__name", lookup_expr="in")
-    fit_id = NumberInFilter(field_name="garment_model__fit_id", lookup_expr="in")
-    category = CharInFilter(field_name="garment_model__category", lookup_expr="in")
+    category = CharInFilter(field_name="garment_model__category__name", lookup_expr="in")
+    category_id = NumberInFilter(field_name="garment_model__category_id", lookup_expr="in")
+    code = CharInFilter(field_name="code", lookup_expr="in")
 
     # --- sizes ----------------------------------------------------------
     size = CharInFilter(field_name="size_breakdown__size", lookup_expr="in",

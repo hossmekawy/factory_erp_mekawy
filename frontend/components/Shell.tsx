@@ -16,7 +16,7 @@ import {
   Layers,
   LogOut,
   Menu,
-  Ruler,
+  Layers3,
   Settings as SettingsIcon,
   Scissors,
   ShieldCheck,
@@ -66,9 +66,11 @@ const NAV_GROUPS: NavGroup[] = [
         Icon: Scissors,
         roles: CUTTING_ROLES,
       },
-      { href: "/cutting/count", label: "الترقيم", Icon: ClipboardList, roles: CUTTING_ROLES },
+      // The counting screen is still reachable at /cutting/count and from a
+      // lay's own page; it is off the menu because the count is normally
+      // entered with the lay itself now.
       { href: "/cutting/models", label: "الموديلات", Icon: Shirt, roles: CUTTING_ROLES },
-      { href: "/cutting/fits", label: "القَصّات", Icon: Ruler, roles: CUTTING_ROLES },
+      { href: "/cutting/categories", label: "الأقسام", Icon: Layers3, roles: CUTTING_ROLES },
       { href: "/cutting/reports", label: "تقارير القص", Icon: BarChart3, roles: CUTTING_ROLES },
     ],
   },

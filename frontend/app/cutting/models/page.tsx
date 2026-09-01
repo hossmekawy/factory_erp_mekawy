@@ -1,7 +1,9 @@
 "use client";
 
-// The model catalogue. The code is unique — the database refuses a duplicate
-// and the dialog shows why — and a model any lay points at cannot be deleted.
+// The model catalogue. Models are identified by NAME ("كارل رجالي") — the
+// number in the notebook belongs to the cutting run, not to the model, so the
+// code here is generated and shown but never typed. Every model carries a
+// section, and one any lay points at cannot be deleted.
 
 import { useEffect, useState } from "react";
 import Shell from "@/components/Shell";
@@ -12,10 +14,8 @@ type GarmentModel = {
   id: number;
   code: string;
   name: string;
-  category: string;
+  category: number | null;
   category_label: string;
-  fit: number | null;
-  fit_name: string;
   default_size_set: number | null;
   notes: string;
   is_active: boolean;
@@ -24,14 +24,16 @@ type GarmentModel = {
 
 export default function Page() {
   const [role, setRole] = useState("");
-  const [fits, setFits] = useState<{ value: string; label: string }[]>([]);
+  const [categories, setCategories] = useState<{ value: string; label: string }[]>([]);
   const [sizeSets, setSizeSets] = useState<{ value: string; label: string }[]>([]);
 
   useEffect(() => {
     api("/api/me/").then((d) => setRole(d.role)).catch(() => {});
-    api("/api/cutting/fits/?page_size=200")
+    api("/api/cutting/categories/?page_size=200")
       .then((d) =>
-        setFits((d.results ?? d).map((f: any) => ({ value: String(f.id), label: f.name })))
+        setCategories(
+          (d.results ?? d).map((c: any) => ({ value: String(c.id), label: c.name }))
+        )
       )
       .catch(() => {});
     api("/api/cutting/size-sets/?page_size=200")
@@ -48,25 +50,20 @@ export default function Page() {
 
   const fields: Field[] = [
     {
-      name: "code",
-      label: "الكود",
+      name: "name",
+      label: "اسم الموديل",
       required: true,
-      ltr: true,
-      placeholder: "1749",
-      hint: "مينفعش يتكرر",
+      placeholder: "كارل رجالي",
+      hint: "ده اللي هتدوّر بيه بعدين",
     },
-    { name: "name", label: "اسم الموديل", required: true, placeholder: "karl" },
     {
       name: "category",
-      label: "الفئة",
+      label: "القسم",
       kind: "select",
-      options: [
-        { value: "men", label: "رجالي" },
-        { value: "women", label: "حريمي" },
-        { value: "kids", label: "أطفال" },
-      ],
+      options: categories,
+      required: true,
+      hint: "مطلوب — عليه بتتبني الفلاتر والتقارير",
     },
-    { name: "fit", label: "القَصّة", kind: "select", options: fits, nullable: true },
     {
       name: "default_size_set",
       label: "طقم المقاسات المعتاد",
@@ -86,14 +83,13 @@ export default function Page() {
     usageLabel: "فرشة",
     fields,
     columns: [
+      { label: "الموديل", render: (r) => <span className="font-semibold">{r.name}</span> },
+      { label: "القسم", render: (r) => r.category_label || "—" },
       {
         label: "الكود",
         ltr: true,
-        render: (r) => <span className="font-semibold">{r.code}</span>,
+        render: (r) => <span className="text-slate-400">{r.code}</span>,
       },
-      { label: "الموديل", render: (r) => r.name },
-      { label: "القَصّة", render: (r) => r.fit_name || "—" },
-      { label: "الفئة", render: (r) => r.category_label || "—" },
       {
         label: "الفرشات",
         ltr: true,

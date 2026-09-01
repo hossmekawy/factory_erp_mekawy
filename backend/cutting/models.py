@@ -14,7 +14,7 @@ from decimal import Decimal
 from django.contrib.auth.models import User
 from django.core.exceptions import ValidationError
 from django.core.validators import MinValueValidator
-from django.db import models
+from django.db import IntegrityError, models, transaction
 
 from hr.models import Employee
 
@@ -81,23 +81,25 @@ class SizeSet(models.Model):
         super().save(*args, **kwargs)
 
 
-class Fit(models.Model):
-    """The cut of a garment — سليم / واسع / بوت كت.
+class Category(models.Model):
+    """The section a model belongs to — رجالي · حريمي · مواليد · رجالي جامبو …
 
-    A catalogue rather than free text on GarmentModel: the same cut is typed
-    on dozens of models, and a typo in one of them splits the reports. Renaming
-    it here corrects every model at once.
+    A catalogue rather than a fixed choices list, because the sections are the
+    factory's own and they add to them. Every model must carry one: it is the
+    axis the reports are read along, and a model without a section is a model
+    that falls out of every filter.
     """
 
-    name = models.CharField(max_length=50, unique=True, verbose_name="القَصّة")
+    name = models.CharField(max_length=50, unique=True, verbose_name="القسم")
     notes = models.CharField(max_length=200, blank=True, verbose_name="ملاحظات")
     is_active = models.BooleanField(default=True, verbose_name="نشط")
+    order = models.PositiveSmallIntegerField(default=0, verbose_name="الترتيب")
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
-        verbose_name = "قَصّة"
-        verbose_name_plural = "القَصّات"
-        ordering = ["name"]
+        verbose_name = "قسم"
+        verbose_name_plural = "الأقسام"
+        ordering = ["order", "name"]
 
     def __str__(self):
         return self.name
@@ -110,24 +112,21 @@ class GarmentModel(models.Model):
     `django.db.models.Model`. The API path stays `/api/cutting/models/`.
     """
 
-    CATEGORY_CHOICES = (
-        ("men", "رجالي"),
-        ("women", "حريمي"),
-        ("kids", "أطفال"),
+    # Generated, never typed. The number the supervisor writes in the notebook
+    # is the code of the cutting run, not of the model — see Lay.code. Models
+    # are found by name ("كارل رجالي"), so this is only a stable internal
+    # handle, counting up from 1.
+    code = models.CharField(
+        max_length=30, unique=True, db_index=True, blank=True, verbose_name="كود الموديل"
     )
-
-    code = models.CharField(max_length=30, unique=True, db_index=True, verbose_name="كود الموديل")
     name = models.CharField(max_length=100, verbose_name="اسم الموديل")
-    category = models.CharField(
-        max_length=10, choices=CATEGORY_CHOICES, blank=True, verbose_name="الفئة"
-    )
-    fit = models.ForeignKey(
-        Fit,
+    category = models.ForeignKey(
+        Category,
         on_delete=models.PROTECT,
         null=True,
-        blank=True,
+        blank=False,
         related_name="models",
-        verbose_name="القَصّة",
+        verbose_name="القسم",
     )
     default_size_set = models.ForeignKey(
         SizeSet,
@@ -147,10 +146,33 @@ class GarmentModel(models.Model):
     class Meta:
         verbose_name = "موديل"
         verbose_name_plural = "الموديلات"
-        ordering = ["code"]
+        ordering = ["name"]
 
     def __str__(self):
-        return f"{self.code} - {self.name}"
+        return self.name
+
+    @classmethod
+    def next_code(cls) -> str:
+        """The next free number. Codes that are not numbers are ignored, so a
+        hand-typed one from before this was generated cannot stall the count."""
+        numbers = [
+            int(c) for c in cls.objects.values_list("code", flat=True) if c and c.isdigit()
+        ]
+        return str(max(numbers, default=0) + 1)
+
+    def save(self, *args, **kwargs):
+        if not self.code:
+            # Retry once: two people adding a model at the same moment would
+            # otherwise collide on the unique index.
+            for _ in range(5):
+                self.code = self.next_code()
+                try:
+                    with transaction.atomic():
+                        return super().save(*args, **kwargs)
+                except IntegrityError:
+                    self.code = ""
+            raise IntegrityError("تعذّر توليد كود للموديل")
+        return super().save(*args, **kwargs)
 
 
 class CuttingSettings(models.Model):
@@ -220,6 +242,13 @@ class Lay(models.Model):
     MODE_DETAILED = "detailed"
     MODE_QUICK = "quick"
     ENTRY_MODE_CHOICES = ((MODE_DETAILED, "تفصيلي"), (MODE_QUICK, "سريع"))
+
+    # The number written at the top of the notebook page. It belongs to the
+    # cutting run, not to the garment model: the same model is cut many times
+    # and gets a fresh code each time so two runs never get mixed up.
+    code = models.CharField(
+        max_length=30, unique=True, db_index=True, verbose_name="كود القصة"
+    )
 
     # --- dates -----------------------------------------------------------
     start_date = models.DateField(verbose_name="تاريخ البداية")

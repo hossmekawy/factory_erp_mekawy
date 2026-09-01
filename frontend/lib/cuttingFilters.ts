@@ -40,20 +40,10 @@ export const FILTER_GROUPS: FilterGroup[] = [
   },
   {
     key: "model",
-    label: "الموديل",
+    label: "الموديل والقسم",
     filters: [
-      { param: "model_code", label: "الكود", kind: "text", placeholder: "1749" },
-      { param: "fit", label: "القَصّة", kind: "text", placeholder: "سليم" },
-      {
-        param: "category",
-        label: "الفئة",
-        kind: "select",
-        options: [
-          { value: "men", label: "رجالي" },
-          { value: "women", label: "حريمي" },
-          { value: "kids", label: "أطفال" },
-        ],
-      },
+      { param: "code", label: "كود القصة", kind: "text", placeholder: "1749" },
+      { param: "category", label: "القسم", kind: "text", placeholder: "رجالي" },
     ],
   },
   {

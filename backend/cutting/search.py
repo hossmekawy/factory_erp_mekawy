@@ -44,8 +44,9 @@ EQUALITY_TOKENS = {
     "bank": "bank_code",
     "موديل": "model_code",
     "model": "model_code",
-    "قصة": "fit",
-    "قَصّة": "fit",
+    "قسم": "category",
+    "فئة": "category",
+    "كود": "code",
 }
 
 BOOLEAN_TOKENS = {
@@ -192,7 +193,8 @@ def describe(params: dict) -> list:
         "lot_no": "لوط",
         "bank_code": "بنك",
         "model_code": "موديل",
-        "fit": "قَصّة",
+        "category": "القسم",
+        "code": "كود القصة",
         "has_shortage": "فيها عجز",
         "has_length_mismatch": "فيها فرق أطوال",
         "has_splice": "فيها وصل",

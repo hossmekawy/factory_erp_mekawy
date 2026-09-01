@@ -7,6 +7,7 @@ walls. `ModelCleanMixin` is what wires the model's rules into the API.
 """
 from django.core.exceptions import ValidationError as DjangoValidationError
 from rest_framework import serializers
+from rest_framework.validators import UniqueValidator
 
 from hr.models import Employee
 
@@ -14,7 +15,7 @@ from . import exceptions, services
 from . import sizes as size_utils
 from .models import (
     Bank,
-    Fit,
+    Category,
     CuttingSettings,
     GarmentModel,
     Lay,
@@ -77,27 +78,33 @@ class SizeSetSerializer(ModelCleanMixin, serializers.ModelSerializer):
             return []
 
 
-class FitSerializer(serializers.ModelSerializer):
+class CategorySerializer(serializers.ModelSerializer):
     model_count = serializers.IntegerField(read_only=True)
 
     class Meta:
-        model = Fit
-        fields = ["id", "name", "notes", "is_active", "model_count", "created_at"]
+        model = Category
+        fields = ["id", "name", "notes", "order", "is_active", "model_count", "created_at"]
 
 
 class GarmentModelSerializer(serializers.ModelSerializer):
     default_size_set_detail = SizeSetSerializer(source="default_size_set", read_only=True)
-    category_label = serializers.CharField(source="get_category_display", read_only=True)
-    fit_name = serializers.CharField(source="fit.name", read_only=True, default="")
+    category_label = serializers.CharField(source="category.name", read_only=True, default="")
     lay_count = serializers.IntegerField(read_only=True)
 
     class Meta:
         model = GarmentModel
         fields = [
-            "id", "code", "name", "category", "category_label", "fit", "fit_name",
+            "id", "code", "name", "category", "category_label",
             "default_size_set", "default_size_set_detail", "image", "notes",
             "is_active", "lay_count", "created_at",
         ]
+        # Generated on save, never accepted from the client.
+        read_only_fields = ["code"]
+        extra_kwargs = {
+            # Every model must carry a section: it is the axis the reports are
+            # read along, and one without it drops out of every filter.
+            "category": {"required": True, "allow_null": False},
+        }
 
 
 class CuttingSettingsSerializer(serializers.ModelSerializer):
@@ -204,9 +211,18 @@ class RecordOutputSerializer(serializers.Serializer):
 
 
 class CloseLaySerializer(serializers.Serializer):
-    """Body of POST /lays/{id}/close/. A reason is what lets warnings through."""
+    """Body of POST /lays/{id}/close/. A reason is what lets warnings through.
+
+    The count may ride along. Numbering is usually a separate job done later,
+    but when the pieces are already known there is no sense making the
+    supervisor come back to a second screen for two numbers — and doing it in
+    the one request means a lay is never left closed-but-half-counted.
+    """
 
     reason = serializers.CharField(required=False, allow_blank=True, default="")
+    actual_pieces = serializers.IntegerField(min_value=0, required=False, allow_null=True)
+    rejected_pieces = serializers.IntegerField(min_value=0, required=False, default=0)
+    output_notes = serializers.CharField(required=False, allow_blank=True, default="")
 
 
 class LayAuditSerializer(serializers.ModelSerializer):
@@ -266,8 +282,8 @@ class LayListSerializer(serializers.ModelSerializer):
 
     garment_model_code = serializers.CharField(source="garment_model.code", read_only=True)
     garment_model_name = serializers.CharField(source="garment_model.name", read_only=True)
-    fit = serializers.CharField(source="garment_model.fit.name", read_only=True,
-                                default="")
+    category = serializers.CharField(source="garment_model.category.name",
+                                     read_only=True, default="")
     bank_name = serializers.CharField(source="bank.name", read_only=True)
     team_leader_name = serializers.CharField(source="team_leader.full_name", read_only=True)
     sizes_summary = serializers.SerializerMethodField()
@@ -282,7 +298,7 @@ class LayListSerializer(serializers.ModelSerializer):
         model = Lay
         fields = [
             "id", "start_date", "end_date", "working_days", "is_multi_day",
-            "garment_model", "garment_model_code", "garment_model_name", "fit",
+            "code", "garment_model", "garment_model_code", "garment_model_name", "category",
             "bank", "bank_name", "team_leader", "team_leader_name",
             "lay_length_m", "lay_width_cm", "pieces_per_ply", "sizes_summary",
             "actual_pieces", "status", "status_label", "entry_mode",
@@ -315,6 +331,17 @@ class LaySerializer(ModelCleanMixin, serializers.ModelSerializer):
     # Required when editing a lay that is already closed (SRS section 3).
     edit_reason = serializers.CharField(write_only=True, required=False, allow_blank=True)
 
+    # The cutting-run code. Unique, with its own message: the default one is
+    # English and names the column.
+    code = serializers.CharField(
+        max_length=30,
+        validators=[
+            UniqueValidator(
+                queryset=Lay.objects.all(),
+                message="كود القصة ده مستخدم في قصة تانية",
+            )
+        ],
+    )
     garment_model_detail = GarmentModelSerializer(source="garment_model", read_only=True)
     bank_detail = BankSerializer(source="bank", read_only=True)
     team_leader_detail = TeamLeaderSerializer(source="team_leader", read_only=True)
@@ -326,7 +353,7 @@ class LaySerializer(ModelCleanMixin, serializers.ModelSerializer):
     class Meta:
         model = Lay
         fields = [
-            "id", "start_date", "end_date", "working_days", "is_multi_day",
+            "id", "code", "start_date", "end_date", "working_days", "is_multi_day",
             "bank", "bank_detail", "garment_model", "garment_model_detail",
             "size_set", "team_leader", "team_leader_detail", "team_members",
             "entered_by", "entered_by_name", "lay_width_cm", "narrowest_width_cm",

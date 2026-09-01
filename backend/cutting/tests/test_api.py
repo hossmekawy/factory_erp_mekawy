@@ -69,10 +69,13 @@ class TestPermissions:
     def test_the_supervisor_can_still_read_the_catalogues(self, as_role, bank):
         assert as_role("cutting_supervisor").get("/api/cutting/banks/").status_code == 200
 
-    def test_the_supervisor_may_add_a_model_from_the_new_lay_screen(self, as_role):
+    def test_the_supervisor_may_add_a_model_from_the_new_lay_screen(
+        self, as_role, category
+    ):
         """SRS 7.2 quick-add: he is holding the model in his hand right now."""
         res = as_role("cutting_supervisor").post(
-            "/api/cutting/models/", {"code": "9001", "name": "موديل جديد"}, format="json"
+            "/api/cutting/models/",
+            {"name": "موديل جديد", "category": category.pk}, format="json",
         )
         assert res.status_code == 201
 
@@ -103,6 +106,7 @@ class TestCreateLay:
         self, supervisor, bank, garment_model, leader
     ):
         res = supervisor.post("/api/cutting/lays/", {
+            "code": "1749",
             "start_date": TODAY.isoformat(),
             "bank": bank.pk,
             "garment_model": garment_model.pk,
@@ -133,6 +137,7 @@ class TestCreateLay:
         someone_else = make_user("admin")
         api.force_authenticate(me)
         res = api.post("/api/cutting/lays/", {
+            "code": "1750",
             "start_date": TODAY.isoformat(), "bank": bank.pk,
             "garment_model": garment_model.pk, "team_leader": leader.pk,
             "lay_width_cm": "167", "lay_length_m": "4.95", "sizes_raw": "32",
@@ -145,6 +150,7 @@ class TestCreateLay:
         self, supervisor, bank, garment_model, leader
     ):
         res = supervisor.post("/api/cutting/lays/", {
+            "code": "1751",
             "start_date": TODAY.isoformat(), "bank": bank.pk,
             "garment_model": garment_model.pk, "team_leader": leader.pk,
             "lay_width_cm": "167", "lay_length_m": "4.95",
@@ -158,6 +164,7 @@ class TestCreateLay:
         res = supervisor.post("/api/cutting/lays/", {
             "start_date": TODAY.isoformat(), "bank": bank.pk,
             "garment_model": garment_model.pk, "team_leader": leader.pk,
+            "code": "1752",
             "lay_width_cm": "167", "lay_length_m": "4.95", "sizes_raw": "()",
         }, format="json")
         assert res.status_code == 400
@@ -168,6 +175,7 @@ class TestCreateLay:
         self, supervisor, bank, garment_model, leader
     ):
         res = supervisor.post("/api/cutting/lays/", {
+            "code": "1753",
             "start_date": TODAY.isoformat(),
             "end_date": (TODAY - DAY).isoformat(),
             "bank": bank.pk, "garment_model": garment_model.pk,
@@ -176,6 +184,87 @@ class TestCreateLay:
         }, format="json")
         assert res.status_code == 400
         assert "date_order" in issue_codes(res)
+
+
+    def test_the_cutting_run_code_is_required(self, supervisor, bank, garment_model, leader):
+        """The number at the top of the notebook page identifies this run."""
+        res = supervisor.post("/api/cutting/lays/", {
+            "start_date": TODAY.isoformat(), "bank": bank.pk,
+            "garment_model": garment_model.pk, "team_leader": leader.pk,
+            "lay_width_cm": "167", "lay_length_m": "4.95", "sizes_raw": "32",
+        }, format="json")
+        assert res.status_code == 400
+        assert "code" in res.data
+
+    def test_two_runs_cannot_share_a_code(self, supervisor, bank, garment_model, leader):
+        body = {
+            "code": "5150", "start_date": TODAY.isoformat(), "bank": bank.pk,
+            "garment_model": garment_model.pk, "team_leader": leader.pk,
+            "lay_width_cm": "167", "lay_length_m": "4.95", "sizes_raw": "32",
+        }
+        assert supervisor.post("/api/cutting/lays/", body,
+                               format="json").status_code == 201
+        clash = supervisor.post("/api/cutting/lays/", body, format="json")
+        assert clash.status_code == 400
+        assert "مستخدم" in str(clash.data["code"][0])
+
+    def test_the_same_model_can_be_cut_again_under_a_new_code(
+        self, supervisor, bank, garment_model, leader
+    ):
+        """The whole reason the code moved off the model."""
+        for code in ("6001", "6002"):
+            res = supervisor.post("/api/cutting/lays/", {
+                "code": code, "start_date": TODAY.isoformat(), "bank": bank.pk,
+                "garment_model": garment_model.pk, "team_leader": leader.pk,
+                "lay_width_cm": "167", "lay_length_m": "4.95", "sizes_raw": "32",
+            }, format="json")
+            assert res.status_code == 201, res.data
+
+
+class TestCountWithTheClose:
+    """Counting is normally later, but it can ride along with the close."""
+
+    def test_the_count_can_come_with_the_close(self, supervisor, make_lay):
+        lay = make_lay()   # 20 plies x 6 = 120
+        res = supervisor.post(f"/api/cutting/lays/{lay.pk}/close/",
+                              {"actual_pieces": 118, "rejected_pieces": 2},
+                              format="json")
+        assert res.status_code == 200, res.data
+        assert res.data["lay"]["status"] == "counted"
+        assert res.data["lay"]["real_metrage"] is not None
+        lay.refresh_from_db()
+        assert lay.output.actual_pieces == 118
+        assert lay.output.rejected_pieces == 2
+
+    def test_it_records_who_entered_it(self, supervisor, make_lay, make_user):
+        lay = make_lay()
+        supervisor.post(f"/api/cutting/lays/{lay.pk}/close/",
+                        {"actual_pieces": 118}, format="json")
+        lay.refresh_from_db()
+        assert lay.output.recorded_by == make_user("cutting_supervisor")
+        assert lay.audit_entries.filter(action="output").exists()
+
+    def test_leaving_it_out_sends_the_lay_to_the_counting_screen(
+        self, supervisor, make_lay
+    ):
+        lay = make_lay()
+        supervisor.post(f"/api/cutting/lays/{lay.pk}/close/", {}, format="json")
+        lay.refresh_from_db()
+        assert lay.status == Lay.STATUS_CLOSED
+        assert not hasattr(lay, "output")
+        waiting = supervisor.get("/api/cutting/lays/?awaiting_count=true")
+        assert lay.pk in [r["id"] for r in waiting.data["results"]]
+
+    def test_an_impossible_count_rolls_the_close_back_too(self, supervisor, make_lay):
+        """One transaction: a lay must never end up closed with a count that
+        never landed."""
+        lay = make_lay()
+        res = supervisor.post(f"/api/cutting/lays/{lay.pk}/close/",
+                              {"actual_pieces": 9999}, format="json")
+        assert res.status_code == 400
+        assert "V9" in [i["code"] for i in res.data["issues"]]
+        lay.refresh_from_db()
+        assert lay.status == Lay.STATUS_OPEN   # the close was rolled back
 
 
 class TestLineRulesReachTheApi:
@@ -583,66 +672,102 @@ class TestCountingWorklist:
         assert {r["id"] for r in res.data["results"]} == {waiting.pk}
 
 
-class TestFitCatalogue:
-    """القَصّات as a catalogue rather than free text (user request, SRS 4.4)."""
+class TestCategoryCatalogue:
+    """الأقسام as a catalogue the factory extends itself."""
 
-    def test_admin_creates_a_fit(self, as_role):
-        res = as_role("admin").post("/api/cutting/fits/", {"name": "بوت كت"}, format="json")
+    def test_the_factory_sections_are_seeded(self, as_role):
+        names = [c["name"] for c in as_role("admin").get(
+            "/api/cutting/categories/?page_size=50").data["results"]]
+        assert "رجالي" in names and "مواليد" in names and "رجالي جامبو" in names
+
+    def test_admin_adds_a_section(self, as_role):
+        res = as_role("admin").post("/api/cutting/categories/",
+                                    {"name": "قسم جديد"}, format="json")
         assert res.status_code == 201
 
-    def test_the_supervisor_may_add_and_correct_but_not_delete(self, as_role, fit):
+    def test_the_supervisor_may_add_and_correct_but_not_delete(self, as_role, category):
         client = as_role("cutting_supervisor")
-        assert client.post("/api/cutting/fits/", {"name": "واسع"},
+        assert client.post("/api/cutting/categories/", {"name": "قسم تاني"},
                            format="json").status_code == 201
-        assert client.patch(f"/api/cutting/fits/{fit.pk}/", {"name": "سليم جدًا"},
-                            format="json").status_code == 200
-        assert client.delete(f"/api/cutting/fits/{fit.pk}/").status_code == 403
+        assert client.patch(f"/api/cutting/categories/{category.pk}/",
+                            {"notes": "ملاحظة"}, format="json").status_code == 200
+        assert client.delete(f"/api/cutting/categories/{category.pk}/").status_code == 403
 
-    def test_a_read_only_role_cannot_touch_it(self, as_role, fit):
+    def test_a_read_only_role_cannot_touch_it(self, as_role, category):
         client = as_role("production_manager")
-        assert client.get("/api/cutting/fits/").status_code == 200
-        assert client.post("/api/cutting/fits/", {"name": "x"},
+        assert client.get("/api/cutting/categories/").status_code == 200
+        assert client.post("/api/cutting/categories/", {"name": "x"},
                            format="json").status_code == 403
 
-    def test_the_name_is_unique(self, as_role, fit):
-        res = as_role("admin").post("/api/cutting/fits/", {"name": fit.name}, format="json")
+    def test_the_name_is_unique(self, as_role, category):
+        res = as_role("admin").post("/api/cutting/categories/",
+                                    {"name": category.name}, format="json")
         assert res.status_code == 400
 
-    def test_renaming_a_fit_renames_it_on_every_model(self, as_role, fit, garment_model):
-        """The whole point of the catalogue."""
-        as_role("admin").patch(f"/api/cutting/fits/{fit.pk}/", {"name": "سليم ٢"},
-                               format="json")
+    def test_renaming_a_section_renames_it_on_every_model(
+        self, as_role, category, garment_model
+    ):
+        as_role("admin").patch(f"/api/cutting/categories/{category.pk}/",
+                               {"name": "رجالي ٢"}, format="json")
         res = as_role("admin").get(f"/api/cutting/models/{garment_model.pk}/")
-        assert res.data["fit_name"] == "سليم ٢"
+        assert res.data["category_label"] == "رجالي ٢"
 
-    def test_a_fit_in_use_is_refused_in_arabic(self, as_role, fit, garment_model):
-        """PROTECT on the FK — deleting it would orphan the models."""
-        res = as_role("admin").delete(f"/api/cutting/fits/{fit.pk}/")
+    def test_a_section_in_use_is_refused_in_arabic(self, as_role, category, garment_model):
+        res = as_role("admin").delete(f"/api/cutting/categories/{category.pk}/")
         assert res.status_code == 400
         assert res.data["issues"][0]["code"] == "in_use"
 
-    def test_it_counts_how_many_models_use_it(self, as_role, fit, garment_model):
-        res = as_role("admin").get("/api/cutting/fits/")
-        assert res.data["results"][0]["model_count"] == 1
+    def test_it_counts_how_many_models_use_it(self, as_role, category, garment_model):
+        rows = as_role("admin").get("/api/cutting/categories/?page_size=50").data["results"]
+        mine = next(r for r in rows if r["id"] == category.pk)
+        assert mine["model_count"] == 1
 
-    def test_lays_can_be_filtered_by_fit_name(self, supervisor, make_lay):
+    def test_lays_can_be_filtered_by_section(self, supervisor, make_lay):
         make_lay()
-        assert supervisor.get("/api/cutting/lays/?fit=سليم").data["count"] == 1
-        assert supervisor.get("/api/cutting/lays/?fit=واسع").data["count"] == 0
+        assert supervisor.get("/api/cutting/lays/?category=رجالي").data["count"] == 1
+        assert supervisor.get("/api/cutting/lays/?category=حريمي").data["count"] == 0
 
-    def test_the_shorthand_token_still_works(self, supervisor, make_lay):
+    def test_the_shorthand_token_filters_by_section(self, supervisor, make_lay):
         make_lay()
-        res = supervisor.get("/api/cutting/lays/search/?q=" + "قصة:سليم")
+        res = supervisor.get("/api/cutting/lays/search/?q=" + "قسم:رجالي")
         assert res.data["count"] == 1
 
 
+
 class TestModelCatalogue:
-    def test_a_duplicate_code_is_refused(self, as_role, garment_model):
-        res = as_role("admin").post(
-            "/api/cutting/models/", {"code": garment_model.code, "name": "تاني"},
+    def test_the_code_is_generated_not_typed(self, as_role, category):
+        """The number in the notebook belongs to the cutting run; a model's
+        code is only an internal handle, counting up from 1."""
+        first = as_role("admin").post(
+            "/api/cutting/models/",
+            {"name": "كارل حريمي", "category": category.pk, "code": "9999"},
             format="json",
         )
+        assert first.status_code == 201
+        assert first.data["code"] != "9999"       # what was sent is ignored
+        assert first.data["code"].isdigit()
+
+    def test_codes_count_up(self, as_role, category):
+        client = as_role("admin")
+        codes = [
+            client.post("/api/cutting/models/",
+                        {"name": f"موديل {i}", "category": category.pk},
+                        format="json").data["code"]
+            for i in range(3)
+        ]
+        assert [int(c) for c in codes] == sorted(int(c) for c in codes)
+        assert len(set(codes)) == 3
+
+    def test_a_model_needs_a_section(self, as_role):
+        """Without one it drops out of every filter and every report."""
+        res = as_role("admin").post("/api/cutting/models/", {"name": "بدون قسم"},
+                                    format="json")
         assert res.status_code == 400
+        assert "category" in res.data
+
+    def test_models_are_found_by_name(self, as_role, garment_model):
+        res = as_role("admin").get("/api/cutting/models/?search=كارل")
+        assert garment_model.pk in [r["id"] for r in res.data["results"]]
 
     def test_it_reports_how_many_lays_use_each_model(self, as_role, make_lay, garment_model):
         make_lay()
@@ -659,9 +784,10 @@ class TestModelCatalogue:
         assert res.data["issues"][0]["code"] == "in_use"
         assert "فرشات" in res.data["detail"]
 
-    def test_an_unused_model_can_be_deleted(self, as_role):
+    def test_an_unused_model_can_be_deleted(self, as_role, category):
         created = as_role("admin").post(
-            "/api/cutting/models/", {"code": "9999", "name": "مؤقت"}, format="json"
+            "/api/cutting/models/", {"name": "مؤقت", "category": category.pk},
+            format="json",
         ).data
         assert as_role("admin").delete(
             f"/api/cutting/models/{created['id']}/"

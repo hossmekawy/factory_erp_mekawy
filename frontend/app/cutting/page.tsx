@@ -36,9 +36,10 @@ type LayRow = {
   start_date: string;
   end_date: string;
   is_multi_day: boolean;
+  code: string;
   garment_model_code: string;
   garment_model_name: string;
-  fit: string;
+  category: string;
   bank_name: string;
   team_leader_name: string;
   lay_length_m: string;
@@ -397,10 +398,10 @@ function LayList() {
               <Link key={r.id} href={`/cutting/${r.id}`} className="card block space-y-1.5">
                 <div className="flex items-center justify-between gap-2">
                   <span className="text-sm font-bold">
-                    <bdi>{r.garment_model_code}</bdi>{" "}
+                    <bdi>{r.code}</bdi>{" "}
                     <span className="font-normal text-slate-500">
                       <bdi>{r.garment_model_name}</bdi>
-                      {r.fit && ` · ${r.fit}`}
+                      {r.category && ` · ${r.category}`}
                     </span>
                   </span>
                   <span className="shrink-0 text-xs text-slate-400" dir="ltr">
@@ -429,8 +430,9 @@ function LayList() {
             <table className="data">
               <thead>
                 <tr>
+                  <Th field="code" {...{ ordering, sortBy }}>كود القصة</Th>
                   <Th field="start_date" {...{ ordering, sortBy }}>التاريخ</Th>
-                  <th>الكود / الموديل</th>
+                  <th>الموديل</th>
                   <th>المقاسات</th>
                   <Th field="lay_length_m" {...{ ordering, sortBy }}>الطول</Th>
                   <th>ق/راق</th>
@@ -450,13 +452,13 @@ function LayList() {
                     className="cursor-pointer"
                     onClick={() => router.push(`/cutting/${r.id}`)}
                   >
+                    <td dir="ltr" className="whitespace-nowrap text-right font-semibold">
+                      <bdi>{r.code}</bdi>
+                    </td>
                     <td dir="ltr" className="whitespace-nowrap text-right">{dateCell(r)}</td>
                     <td>
-                      <div className="font-semibold"><bdi>{r.garment_model_code}</bdi></div>
-                      <div className="text-xs text-slate-500">
-                        <bdi>{r.garment_model_name}</bdi>
-                        {r.fit && ` · ${r.fit}`}
-                      </div>
+                      <div className="font-semibold"><bdi>{r.garment_model_name}</bdi></div>
+                      <div className="text-xs text-slate-500">{r.category}</div>
                     </td>
                     <td><SizeChips sizes={r.sizes_summary} /></td>
                     <td dir="ltr" className="text-right">{fmt(Number(r.lay_length_m))}</td>
@@ -637,7 +639,10 @@ function FilterDrawer({
   return (
     <div className="fixed inset-0 z-40 flex">
       <div className="flex-1 bg-black/40" onClick={onClose} />
-      <aside className="flex w-full max-w-sm flex-col bg-white shadow-xl">
+      <aside
+        data-testid="filter-drawer"
+        className="flex w-full max-w-sm flex-col bg-white shadow-xl"
+      >
         <div className="flex items-center justify-between border-b border-slate-200 p-4">
           <span className="flex items-center gap-2 font-bold">
             <Filter className="h-4 w-4 text-red-600" />

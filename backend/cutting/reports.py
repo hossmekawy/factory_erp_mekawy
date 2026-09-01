@@ -43,7 +43,7 @@ def _period(start, end) -> dict:
 # --- 9.1 metrage per model ------------------------------------------------
 
 METRAGE_COLUMNS = [
-    ("code", "الكود"), ("name", "الموديل"), ("fit", "القَصّة"),
+    ("code", "الكود"), ("name", "الموديل"), ("category", "القسم"),
     ("lays", "الفرشات"), ("theoretical_pieces", "القطع النظرية"),
     ("actual_pieces", "القطع الفعلية"), ("expected_metrage", "المتوقع"),
     ("real_metrage", "الحقيقي"), ("deviation_pct", "الانحراف %"),
@@ -53,7 +53,7 @@ METRAGE_COLUMNS = [
 def metrage_by_model(start=None, end=None, include_backfill=False) -> dict:
     qs = _base(start, end, include_backfill)
     rows = (
-        qs.values("garment_model__code", "garment_model__name", "garment_model__fit__name")
+        qs.values("garment_model__code", "garment_model__name", "garment_model__category__name")
         .annotate(
             lays=Count("id", distinct=True),
             theoretical_pieces=Sum("theoretical_pieces"),
@@ -62,7 +62,7 @@ def metrage_by_model(start=None, end=None, include_backfill=False) -> dict:
             real_metrage=Avg("real_metrage"),
             deviation_pct=Avg("deviation_pct"),
         )
-        .order_by("garment_model__code")
+        .order_by("garment_model__name")
     )
     return {
         "title": "الميتراج لكل موديل",
@@ -72,7 +72,7 @@ def metrage_by_model(start=None, end=None, include_backfill=False) -> dict:
             {
                 "code": r["garment_model__code"],
                 "name": r["garment_model__name"],
-                "fit": r["garment_model__fit__name"] or "",
+                "category": r["garment_model__category__name"] or "",
                 "lays": r["lays"],
                 "theoretical_pieces": r["theoretical_pieces"] or 0,
                 "actual_pieces": r["actual_pieces"] or 0,
@@ -88,7 +88,7 @@ def metrage_by_model(start=None, end=None, include_backfill=False) -> dict:
 # --- 9.2 shortage ---------------------------------------------------------
 
 SHORTAGE_COLUMNS = [
-    ("lay_id", "الفرشة"), ("date", "التاريخ"), ("code", "الكود"),
+    ("code", "كود القصة"), ("date", "التاريخ"), ("model", "الموديل"),
     ("team_leader", "رئيس الفريق"), ("bank", "البنك"),
     ("articles", "الخامة"), ("lots", "اللوط"),
     ("roll_length", "أطوال الأتواب"), ("consumed", "المستهلك"),
@@ -105,9 +105,9 @@ def shortage_report(start=None, end=None, include_backfill=False) -> dict:
     for lay in qs.prefetch_related("lines"):
         lines = list(lay.lines.all())
         rows.append({
-            "lay_id": lay.pk,
+            "code": lay.code,
             "date": lay.end_date.isoformat(),
-            "code": lay.garment_model.code,
+            "model": lay.garment_model.name,
             "team_leader": lay.team_leader.full_name,
             "bank": lay.bank.name,
             "articles": " / ".join(sorted({l.article for l in lines if l.article})),
