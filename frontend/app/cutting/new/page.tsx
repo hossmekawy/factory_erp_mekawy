@@ -71,6 +71,7 @@ export default function NewLayPage() {
   // "30 32 32" on the device this screen exists for; they go in one at a time.
   const [sizeTokens, setSizeTokens] = useState<string[]>([]);
   const [sizeEntry, setSizeEntry] = useState("");
+  const sizeInputRef = useRef<HTMLInputElement>(null);
   const [chips, setChips] = useState<SizeChip[]>([]);
   const sizesRaw = sizeTokens.join(" ");
   const [piecesPerPly, setPiecesPerPly] = useState(0);
@@ -205,6 +206,11 @@ export default function NewLayPage() {
     if (!parsed.length) return;
     setSizeTokens((current) => [...current, ...parsed]);
     setSizeEntry("");
+    // Put the caret straight back. Six sizes means six adds, and on a phone a
+    // lost focus is a dismissed keyboard and another tap for every one of them.
+    // Called inside the tap's own handler so the browser still counts it as a
+    // user gesture and reopens the keyboard.
+    sizeInputRef.current?.focus();
   };
 
   const dropSize = (size: string) =>
@@ -570,6 +576,7 @@ export default function NewLayPage() {
             <div className="flex gap-2">
               <input
                 data-testid="sizes-input"
+                ref={sizeInputRef}
                 dir="ltr"
                 className={`${FIELD} ltr-num flex-1`}
                 inputMode="numeric"
@@ -588,6 +595,9 @@ export default function NewLayPage() {
                 data-testid="add-size"
                 className="btn-secondary min-h-12 shrink-0 px-5"
                 disabled={!sizeEntry.trim()}
+                // Blocking the default on pointer-down stops the browser
+                // moving focus to the button at all; the click still fires.
+                onPointerDown={(e) => e.preventDefault()}
                 onClick={() => addSizes(sizeEntry)}
               >
                 <Plus className="h-4 w-4" />
@@ -605,7 +615,11 @@ export default function NewLayPage() {
                     type="button"
                     data-testid="size-chip"
                     data-size={c.size}
-                    onClick={() => dropSize(c.size)}
+                    onPointerDown={(e) => e.preventDefault()}
+                    onClick={() => {
+                      dropSize(c.size);
+                      sizeInputRef.current?.focus();
+                    }}
                     className="flex items-center gap-1 rounded-full bg-slate-100 px-2.5 py-1.5 text-sm font-semibold text-slate-700 hover:bg-rose-50 hover:text-rose-700"
                     aria-label={`شيل مقاس ${c.size}`}
                   >
@@ -620,7 +634,11 @@ export default function NewLayPage() {
                   <button
                     type="button"
                     data-testid="clear-sizes"
-                    onClick={() => setSizeTokens([])}
+                    onPointerDown={(e) => e.preventDefault()}
+                    onClick={() => {
+                      setSizeTokens([]);
+                      sizeInputRef.current?.focus();
+                    }}
                     className="px-2 text-xs font-semibold text-slate-400 hover:text-rose-700"
                   >
                     مسح الكل

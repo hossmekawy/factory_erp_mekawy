@@ -65,8 +65,43 @@ check("four distinct chips", (await chips()).length === 4, JSON.stringify(await 
 check("box cleared after each add", (await t("sizes-input").inputValue()) === "");
 await shot("s1-added");
 
+// ---------------------------------------------------------------- 1b
+console.log("\n1b. focus never leaves the box — six sizes must be six taps");
+await fresh();
+await t("sizes-input").click();
+const focusedAfter = [];
+for (const size of ["30", "32", "34"]) {
+  await t("sizes-input").fill(size);
+  await tap("add-size");
+  await page.waitForTimeout(350);   // let the chips re-render
+  focusedAfter.push(
+    await page.evaluate(() => document.activeElement?.getAttribute("data-testid"))
+  );
+}
+check("focus stays in the size box after every add",
+      focusedAfter.every((f) => f === "sizes-input"), JSON.stringify(focusedAfter));
+
+// and removing a chip must not steal it either
+await t("size-chip").first().click();
+await page.waitForTimeout(350);
+check("focus stays after removing a chip",
+      (await page.evaluate(() => document.activeElement?.getAttribute("data-testid")))
+        === "sizes-input");
+
+await tap("clear-sizes");
+await page.waitForTimeout(350);
+check("focus stays after clear all",
+      (await page.evaluate(() => document.activeElement?.getAttribute("data-testid")))
+        === "sizes-input");
+
 // ---------------------------------------------------------------- 2
 console.log("\n2. the same size repeats, and the chip shows the count");
+await fresh();
+for (const size of ["30", "32", "32", "34", "34", "36"]) {
+  await t("sizes-input").fill(size);
+  await tap("add-size");
+}
+await page.waitForTimeout(700);
 const chipText = await t("size-chip").filter({ hasText: "32" }).first().innerText();
 check("32 shows as ×2", chipText.includes("2"), chipText);
 
