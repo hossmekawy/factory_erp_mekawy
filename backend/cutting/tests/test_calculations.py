@@ -3,7 +3,7 @@ from decimal import Decimal
 
 import pytest
 
-from cutting import services
+from cutting import services, validators
 from cutting.models import Lay, LayLine
 
 pytestmark = pytest.mark.django_db
@@ -244,3 +244,144 @@ class TestStoredNotProperty:
         lay.refresh_from_db()
         for field, value in values.items():
             assert getattr(lay, field) == value
+
+
+class TestShadeBreakdown:
+    """Plies per shade, and therefore pieces and share (user request)."""
+
+    def test_detailed_mode_derives_it_with_no_extra_input(self, make_lay):
+        lay = make_lay(lines=[
+            {"roll_length_m": "99.50", "plies": 20, "remnant_m": "0.50", "shade_note": "أسود"},
+            {"roll_length_m": "49.50", "plies": 10, "remnant_m": "0", "shade_note": "أسود"},
+            {"roll_length_m": "49.50", "plies": 10, "remnant_m": "0", "shade_note": "كحلي"},
+        ])
+        got = {r["shade"]: r["plies"] for r in services.shade_totals(lay)}
+        assert got == {"أسود": 30, "كحلي": 10}
+
+    def test_the_shares_and_pieces_follow(self, make_lay):
+        lay = make_lay(lines=[
+            {"roll_length_m": "99.50", "plies": 30, "remnant_m": "0.50", "shade_note": "أسود"},
+            {"roll_length_m": "33.00", "plies": 10, "remnant_m": "0", "shade_note": "كحلي"},
+        ])
+        rows = {r["shade"]: r for r in services.shade_totals(lay)}
+        assert rows["أسود"]["pct"] == 75.0
+        assert rows["كحلي"]["pct"] == 25.0
+        assert rows["أسود"]["pieces"] == 30 * lay.pieces_per_ply
+
+    def test_the_shades_always_add_up_to_the_total_plies(self, make_lay):
+        lay = make_lay(lines=[
+            {"roll_length_m": "99.50", "plies": 20, "remnant_m": "0.50", "shade_note": "أسود"},
+            {"roll_length_m": "49.50", "plies": 10, "remnant_m": "0", "shade_note": "كحلي"},
+        ])
+        assert sum(r["plies"] for r in services.shade_totals(lay)) == lay.total_plies
+
+    def test_a_splice_comes_off_its_own_shade(self, make_lay):
+        """A spliced ply was written on two lines; counting it twice would make
+        the shades add up to one more than the lay has."""
+        lay = make_lay(lines=[
+            {"roll_length_m": "50.00", "plies": 10, "remnant_m": "0", "shade_note": "أسود",
+             "roll_end_action": LayLine.ACTION_SPLICE},
+            {"roll_length_m": "49.50", "plies": 10, "remnant_m": "0", "shade_note": "أسود"},
+            {"roll_length_m": "49.50", "plies": 10, "remnant_m": "0", "shade_note": "كحلي"},
+        ])
+        assert lay.total_plies == 29          # 30 - 1 splice
+        rows = {r["shade"]: r["plies"] for r in services.shade_totals(lay)}
+        assert rows == {"أسود": 19, "كحلي": 10}
+        assert sum(rows.values()) == lay.total_plies
+
+    def test_lines_with_no_shade_are_left_out(self, make_lay):
+        lay = make_lay(lines=[
+            {"roll_length_m": "99.50", "plies": 20, "remnant_m": "0.50", "shade_note": "أسود"},
+            {"roll_length_m": "49.50", "plies": 10, "remnant_m": "0"},
+        ])
+        assert [r["shade"] for r in services.shade_totals(lay)] == ["أسود"]
+
+    def test_it_follows_the_lines_when_they_change(self, make_lay):
+        lay = make_lay(lines=[
+            {"roll_length_m": "99.50", "plies": 20, "remnant_m": "0.50", "shade_note": "أسود"},
+        ])
+        assert len(services.shade_totals(lay)) == 1
+        LayLine.objects.create(lay=lay, line_no=2, roll_length_m=Decimal("49.50"),
+                               plies=10, remnant_m=Decimal("0"), shade_note="كحلي")
+        services.recalculate(lay)
+        assert len(services.shade_totals(lay)) == 2
+
+    def test_one_shade_is_a_hundred_percent(self, make_lay):
+        lay = make_lay(lines=[
+            {"roll_length_m": "99.50", "plies": 20, "remnant_m": "0.50", "shade_note": "أسود"},
+        ])
+        assert services.shade_totals(lay)[0]["pct"] == 100.0
+
+
+class TestShadeBreakdownInQuickMode:
+    """No lines to derive from, so it may be entered — and it is optional."""
+
+    def test_it_can_be_entered_by_hand(self, make_lay):
+        lay = make_lay(entry_mode=Lay.MODE_QUICK, lines=[
+            {"roll_length_m": "99.50", "plies": 20, "remnant_m": "0.50",
+             "is_aggregate": True},
+        ])
+        services.set_shade_breakdown(lay, [
+            {"shade": "أسود", "plies": 12}, {"shade": "كحلي", "plies": 8},
+        ])
+        rows = {r["shade"]: r["plies"] for r in services.shade_totals(lay)}
+        assert rows == {"أسود": 12, "كحلي": 8}
+        assert all(r["is_manual"] for r in services.shade_totals(lay))
+
+    def test_recalculating_does_not_wipe_what_was_typed(self, make_lay):
+        lay = make_lay(entry_mode=Lay.MODE_QUICK, lines=[
+            {"roll_length_m": "99.50", "plies": 20, "remnant_m": "0.50",
+             "is_aggregate": True},
+        ])
+        services.set_shade_breakdown(lay, [{"shade": "أسود", "plies": 20}])
+        services.recalculate(lay)
+        assert len(services.shade_totals(lay)) == 1
+
+    def test_leaving_it_empty_is_normal_and_closes_fine(self, make_lay, user):
+        lay = make_lay(entry_mode=Lay.MODE_QUICK, lines=[
+            {"roll_length_m": "99.50", "plies": 20, "remnant_m": "0.50",
+             "is_aggregate": True},
+        ])
+        assert services.shade_totals(lay) == []
+        services.close_lay(lay, user, override_reason="اختبار")
+        lay.refresh_from_db()
+        assert lay.status == Lay.STATUS_CLOSED
+
+    def test_a_mismatch_warns_and_states_the_gap_but_does_not_block(
+        self, make_lay, user
+    ):
+        """V11 — same reasoning as V4: refusing here just teaches him to leave
+        it empty, which loses the number he wanted."""
+        lay = make_lay(entry_mode=Lay.MODE_QUICK, lines=[
+            {"roll_length_m": "99.50", "plies": 20, "remnant_m": "0.50",
+             "is_aggregate": True},
+        ])
+        services.set_shade_breakdown(lay, [{"shade": "أسود", "plies": 15}])
+
+        issues = validators.check_v11_shade_plies(lay)
+        assert [i.code for i in issues] == ["V11"]
+        assert issues[0].level == validators.WARNING
+        assert "5" in issues[0].message          # the gap is stated
+
+        services.close_lay(lay, user, override_reason="فرق مقصود")
+        lay.refresh_from_db()
+        assert lay.status == Lay.STATUS_CLOSED
+
+    def test_a_matching_split_says_nothing(self, make_lay):
+        lay = make_lay(entry_mode=Lay.MODE_QUICK, lines=[
+            {"roll_length_m": "99.50", "plies": 20, "remnant_m": "0.50",
+             "is_aggregate": True},
+        ])
+        services.set_shade_breakdown(lay, [
+            {"shade": "أسود", "plies": 12}, {"shade": "كحلي", "plies": 8},
+        ])
+        assert validators.check_v11_shade_plies(lay) == []
+
+    def test_clearing_it_removes_the_warning(self, make_lay):
+        lay = make_lay(entry_mode=Lay.MODE_QUICK, lines=[
+            {"roll_length_m": "99.50", "plies": 20, "remnant_m": "0.50",
+             "is_aggregate": True},
+        ])
+        services.set_shade_breakdown(lay, [{"shade": "أسود", "plies": 15}])
+        services.set_shade_breakdown(lay, [])
+        assert validators.check_v11_shade_plies(lay) == []

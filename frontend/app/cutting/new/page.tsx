@@ -32,6 +32,7 @@ import {
   quickTotals,
   remnantIsWaste,
   removeOneSize,
+  shadeTotals,
   splitSizes,
   widthToCm,
 } from "@/lib/cutting";
@@ -104,6 +105,11 @@ export default function NewLayPage() {
   const [lines, setLines] = useState<LineDraft[]>([emptyLine()]);
   const [quickMetres, setQuickMetres] = useState("");
   const [quickPlies, setQuickPlies] = useState("");
+  // Quick mode has no per-roll shades to derive from, so they may be typed.
+  // Entirely optional — left empty the lay saves and closes exactly as before.
+  const [quickShades, setQuickShades] = useState<{ shade: string; plies: string }[]>(
+    []
+  );
   const [notes, setNotes] = useState("");
 
   // Counting is normally a separate job done later, but when the pieces are
@@ -130,6 +136,21 @@ export default function NewLayPage() {
   const layLength = num(lengthRaw);
   const widthCm = widthToCm(widthRaw);
 
+  // Detailed: derived from the lines, nobody types anything.
+  // Quick: whatever was typed, if anything.
+  const shades = useMemo(() => {
+    if (mode === "detailed") return shadeTotals(lines, piecesPerPly);
+    const typed = quickShades
+      .filter((r) => r.shade.trim() && num(r.plies) > 0)
+      .map((r) => ({ shade: r.shade.trim(), plies: num(r.plies) }));
+    const sum = typed.reduce((s, r) => s + r.plies, 0);
+    return typed.map((r) => ({
+      ...r,
+      pieces: r.plies * piecesPerPly,
+      pct: sum > 0 ? Math.round((r.plies / sum) * 1000) / 10 : null,
+    }));
+  }, [mode, lines, quickShades, piecesPerPly]);
+
   const totals = useMemo(
     () =>
       mode === "detailed"
@@ -144,6 +165,10 @@ export default function NewLayPage() {
   // are preselected from the stored defaults. Nothing is locked — changing
   // either one is a single tap, and the next lay starts from the default again
   // until the default itself is changed in Settings.
+  const shadePlies = shades.reduce((s, r) => s + r.plies, 0);
+  // V11: a hand-entered split that does not add up is shown, never blocked.
+  const shadeGap = mode === "quick" && shades.length > 0 ? shadePlies - totals.totalPlies : 0;
+
   useEffect(() => {
     api("/api/cutting/banks/?is_active=true")
       .then((d) => setBanks(d.results ?? d))
@@ -361,6 +386,12 @@ export default function NewLayPage() {
           lay_length_m: layLength.toFixed(2),
           sizes_raw: sizesRaw,
           entry_mode: mode,
+          shade_entries:
+            mode === "quick"
+              ? quickShades
+                  .filter((r) => r.shade.trim() && num(r.plies) > 0)
+                  .map((r) => ({ shade: r.shade.trim(), plies: Math.round(num(r.plies)) }))
+              : [],
           notes,
           lines: payloadLines(),
         }),
@@ -380,6 +411,12 @@ export default function NewLayPage() {
         lay_length_m: layLength.toFixed(2),
         sizes_raw: sizesRaw,
         entry_mode: mode,
+        shade_entries:
+          mode === "quick"
+            ? quickShades
+                .filter((r) => r.shade.trim() && num(r.plies) > 0)
+                .map((r) => ({ shade: r.shade.trim(), plies: Math.round(num(r.plies)) }))
+            : [],
         notes,
         lines: payloadLines(),
       }),
@@ -864,6 +901,7 @@ export default function NewLayPage() {
                       <input
                         data-testid="line-shade"
                         className={FIELD}
+                        list="lay-shades"
                         value={l.shade_note}
                         placeholder="كحلي"
                         onChange={(e) => setLine(l.key, { shade_note: e.target.value })}
@@ -902,6 +940,16 @@ export default function NewLayPage() {
                 );
               })}
             </div>
+
+            {/* Suggest what has already been typed on this lay, so "أسود" and
+                "اسود" do not become two colours in the breakdown. */}
+            <datalist id="lay-shades">
+              {[...new Set(lines.map((l) => l.shade_note.trim()).filter(Boolean))].map(
+                (sh) => (
+                  <option key={sh} value={sh} />
+                )
+              )}
+            </datalist>
 
             <button
               type="button"
@@ -942,8 +990,84 @@ export default function NewLayPage() {
               />
             </Row>
             <p className="col-span-2 text-xs text-slate-500">
-              الفرشة هتتسجّل &quot;إدخال سريع&quot; وتقدر تفكّها لتفصيلي بعدين.
+              القصة هتتسجّل &quot;إدخال سريع&quot; وتقدر تفكّها لتفصيلي بعدين.
             </p>
+
+            {/* Optional. In detailed mode this comes from the lines by itself. */}
+            <div className="col-span-2 border-t border-slate-100 pt-3">
+              <div className="mb-1 flex items-baseline justify-between gap-2">
+                <label className="!mb-0">الراق لكل لون</label>
+                <span className="text-xs text-slate-400">اختياري</span>
+              </div>
+
+              {quickShades.length > 0 && (
+                <div className="space-y-2">
+                  {quickShades.map((row, i) => (
+                    <div key={i} className="grid grid-cols-[1fr_0.6fr_1.6rem] gap-1.5">
+                      <input
+                        data-testid="quick-shade"
+                        className={FIELD}
+                        placeholder="أسود"
+                        list="lay-shades"
+                        value={row.shade}
+                        onChange={(e) =>
+                          setQuickShades((rows) =>
+                            rows.map((r, n) =>
+                              n === i ? { ...r, shade: e.target.value } : r
+                            )
+                          )
+                        }
+                      />
+                      <input
+                        data-testid="quick-shade-plies"
+                        dir="ltr"
+                        className={`${FIELD} ltr-num`}
+                        inputMode="numeric"
+                        value={row.plies}
+                        onChange={(e) =>
+                          setQuickShades((rows) =>
+                            rows.map((r, n) =>
+                              n === i ? { ...r, plies: e.target.value } : r
+                            )
+                          )
+                        }
+                      />
+                      <button
+                        type="button"
+                        aria-label="شيل اللون"
+                        className="flex h-12 items-center justify-center text-slate-300 hover:text-rose-600"
+                        onClick={() =>
+                          setQuickShades((rows) => rows.filter((_, n) => n !== i))
+                        }
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              <button
+                type="button"
+                data-testid="add-quick-shade"
+                onClick={() =>
+                  setQuickShades((rows) => [...rows, { shade: "", plies: "" }])
+                }
+                className="mt-2 flex w-full items-center justify-center gap-2 rounded-lg border-2 border-dashed border-slate-300 py-2.5 text-sm font-semibold text-slate-500 hover:border-red-300 hover:text-red-600"
+              >
+                <Plus className="h-4 w-4" />
+                إضافة لون
+              </button>
+
+              {shadeGap !== 0 && (
+                <p data-testid="shade-gap" className="mt-2 text-sm text-amber-700">
+                  مجموع الراق حسب اللون <bdi>{shadePlies}</bdi>{" "}
+                  {shadeGap > 0 ? "أكتر" : "أقل"} من إجمالي الراق{" "}
+                  <bdi>{totals.totalPlies}</bdi> بفرق <bdi>{Math.abs(shadeGap)}</bdi> —
+                  تحذير بس، القفل هيعدّي.
+                </p>
+              )}
+            </div>
           </section>
         )}
 
@@ -1080,6 +1204,26 @@ export default function NewLayPage() {
 
         {/* ---- live calculation bar: no server call ---- */}
         <div className="fixed inset-x-0 bottom-0 z-30 border-t border-slate-200 bg-white/95 backdrop-blur">
+          {shades.length > 0 && (
+            <div
+              data-testid="shade-strip"
+              className="mx-auto flex max-w-2xl flex-wrap gap-1.5 px-3 pt-2"
+            >
+              {shades.map((sh) => (
+                <span
+                  key={sh.shade}
+                  data-testid="shade-chip"
+                  data-shade={sh.shade}
+                  className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-700"
+                >
+                  {sh.shade}
+                  <span dir="ltr" className="mr-1.5 font-normal text-slate-500">
+                    {sh.plies} راق · {sh.pieces} قطعة · {sh.pct}%
+                  </span>
+                </span>
+              ))}
+            </div>
+          )}
           <div className="mx-auto grid max-w-2xl grid-cols-4 gap-1 px-3 py-2 text-center">
             <Stat testid="stat-plies" label="إجمالي الراق" value={String(totals.totalPlies)} />
             <Stat testid="stat-pieces" label="القطع النظرية" value={String(totals.theoreticalPieces)} />

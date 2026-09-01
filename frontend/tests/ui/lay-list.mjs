@@ -134,8 +134,13 @@ await other.context().close();
 console.log("\n6. clearing removes the filters but keeps the search text");
 await go("/cutting?status=closed&q=" + encodeURIComponent("كارل"));
 await page.getByText("مسح الكل").click();
-await page.waitForTimeout(700);
-check("filter gone", !page.url().includes("status="), page.url());
+// Wait for the URL, not a sleep — router.replace lands asynchronously, and a
+// fixed timeout here has flaked twice already.
+const cleared = await page
+  .waitForURL((u) => !u.searchParams.has("status"), { timeout: 8000 })
+  .then(() => true)
+  .catch(() => false);
+check("filter gone", cleared, page.url());
 check("search text kept", page.url().includes("q="), page.url());
 
 // ---------------------------------------------------------------- 7
@@ -203,15 +208,21 @@ check("no JS errors on mobile", phoneErrs.length === 0, phoneErrs[0] ?? "");
 
 // ---------------------------------------------------------------- 11
 console.log("\n11. saved searches");
-page.on("dialog", (d) => d.accept("فرشات فيها عجز"));
+// A fresh name each run: the same owner cannot save the same name twice.
+const searchName = "بحث محفوظ " + String(Date.now()).slice(-6);
+page.on("dialog", (d) => d.accept(searchName));
 await go("/cutting?has_shortage=true");
 await page.getByText("احفظ البحث").click();
-await page.waitForTimeout(1000);
+await page.waitForTimeout(1200);
 await go("/cutting");
-check("saved search appears as a button", await page.getByText("فرشات فيها عجز").first().isVisible());
-await page.getByText("فرشات فيها عجز").first().click();
-await page.waitForTimeout(800);
-check("clicking it restores the filters", page.url().includes("has_shortage=true"), page.url());
+check("saved search appears as a button",
+      await page.getByText(searchName).first().isVisible());
+await page.getByText(searchName).first().click();
+const restored = await page
+  .waitForURL(/has_shortage=true/, { timeout: 8000 })
+  .then(() => true)
+  .catch(() => false);
+check("clicking it restores the filters", restored, page.url());
 
 console.log(`\nJS errors: ${errs.length}`);
 errs.slice(0, 4).forEach((e) => console.log("   " + e.slice(0, 130)));

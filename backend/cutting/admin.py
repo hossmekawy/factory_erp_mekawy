@@ -9,6 +9,7 @@ from .models import (
     LayAudit,
     LayLine,
     LayOutput,
+    LayShadeBreakdown,
     LaySizeBreakdown,
     RemnantLog,
     SizeSet,
@@ -53,6 +54,11 @@ class LaySizeBreakdownInline(admin.TabularInline):
     extra = 0
 
 
+class LayShadeBreakdownInline(admin.TabularInline):
+    model = LayShadeBreakdown
+    extra = 0
+
+
 @admin.register(Lay)
 class LayAdmin(admin.ModelAdmin):
     list_display = [
@@ -65,7 +71,7 @@ class LayAdmin(admin.ModelAdmin):
     ]
     search_fields = ["code", "garment_model__name", "team_leader__full_name"]
     date_hierarchy = "start_date"
-    inlines = [LaySizeBreakdownInline, LayLineInline]
+    inlines = [LaySizeBreakdownInline, LayShadeBreakdownInline, LayLineInline]
     # Written by services.recalculate — editing them by hand would be a lie.
     readonly_fields = [
         "total_plies", "theoretical_pieces", "total_roll_length_m", "total_remnant_m",

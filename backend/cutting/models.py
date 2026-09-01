@@ -457,6 +457,54 @@ class LaySizeBreakdown(models.Model):
         return self.pieces_in_ply * self.lay.total_plies
 
 
+class LayShadeBreakdown(models.Model):
+    """How the plies of one lay split across shades.
+
+    Two ways in, one place to read from:
+
+    * **detailed** — every line carries its shade, so this is derived from the
+      lines on every recalculation and nobody types anything;
+    * **quick** — there are no lines to derive from, so the supervisor may
+      enter it himself. Entirely optional: leave it out and the lay closes
+      exactly as before.
+
+    The plies here always add up to `Lay.total_plies` when derived, splice
+    included: a spliced ply was written on two lines, and the one subtracted
+    comes off the shade of the line that was spliced.
+    """
+
+    lay = models.ForeignKey(Lay, on_delete=models.CASCADE, related_name="shade_breakdown")
+    shade = models.CharField(max_length=100, verbose_name="اللون")
+    plies = models.PositiveIntegerField(verbose_name="الراق")
+    # True when it was typed in quick mode rather than derived from the lines.
+    is_manual = models.BooleanField(default=False, verbose_name="مُدخَل يدوي")
+    order = models.PositiveSmallIntegerField(default=0, verbose_name="الترتيب")
+
+    class Meta:
+        verbose_name = "لون في القصة"
+        verbose_name_plural = "ألوان القصة"
+        ordering = ["order", "id"]
+        constraints = [
+            models.UniqueConstraint(fields=["lay", "shade"], name="uniq_lay_shade"),
+        ]
+        indexes = [models.Index(fields=["shade"], name="shade_name_idx")]
+
+    def __str__(self):
+        return f"{self.shade}: {self.plies} راق"
+
+    @property
+    def pieces(self) -> int:
+        """This shade's share of the whole lay."""
+        return self.plies * self.lay.pieces_per_ply
+
+    @property
+    def pct(self):
+        total = self.lay.total_plies
+        if not total:
+            return None
+        return round(self.plies / total * 100, 1)
+
+
 class LayLine(models.Model):
     """One roll laid onto the spread — one notebook row.
 

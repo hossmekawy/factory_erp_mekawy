@@ -121,6 +121,8 @@ def recalculate(lay, save: bool = True) -> dict:
         Lay.objects.filter(pk=lay.pk).update(**values)
         for field, value in values.items():
             setattr(lay, field, value)
+        # The shade split follows the lines, so it is rebuilt with them.
+        sync_shade_breakdown(lay)
     return values
 
 
@@ -206,6 +208,85 @@ def distribute_actual_pieces(lay, actual_pieces: int, manual: dict = None) -> di
         row.is_manually_adjusted = bool(manual)
     LaySizeBreakdown.objects.bulk_update(breakdown, ["actual_pieces", "is_manually_adjusted"])
     return result
+
+
+# --- shades --------------------------------------------------------------
+
+def shade_plies_from_lines(lines) -> dict:
+    """{shade: plies} for a detailed lay, with the splice already taken off.
+
+    The subtraction lands on the shade of the line that was spliced, which is
+    what keeps the total here equal to `Lay.total_plies` rather than one higher
+    per splice.
+    """
+    totals = {}
+    for line in lines:
+        shade = (line.shade_note or "").strip()
+        if not shade:
+            continue
+        totals[shade] = totals.get(shade, 0) + line.plies - (1 if line.has_splice else 0)
+    return {shade: plies for shade, plies in totals.items() if plies > 0}
+
+
+def sync_shade_breakdown(lay, lines=None):
+    """Rebuild the shade split from the lines. Detailed mode only.
+
+    In quick mode there are no per-roll shades to derive from, so whatever was
+    entered by hand is left exactly as it is.
+    """
+    from .models import LayShadeBreakdown
+
+    if lay.entry_mode == lay.MODE_QUICK:
+        return list(lay.shade_breakdown.all())
+
+    if lines is None:
+        lines = list(lay.lines.all())
+    totals = shade_plies_from_lines(lines)
+
+    lay.shade_breakdown.all().delete()
+    rows = [
+        LayShadeBreakdown(lay=lay, shade=shade, plies=plies, order=i, is_manual=False)
+        for i, (shade, plies) in enumerate(totals.items())
+    ]
+    LayShadeBreakdown.objects.bulk_create(rows)
+    return rows
+
+
+def set_shade_breakdown(lay, entries):
+    """Store a hand-entered shade split (quick mode).
+
+    `entries` is [{"shade": ..., "plies": ...}]. An empty list clears it, which
+    is the normal state — the whole thing is optional.
+    """
+    from .models import LayShadeBreakdown
+
+    lay.shade_breakdown.all().delete()
+    rows = []
+    for i, entry in enumerate(entries or []):
+        shade = str(entry.get("shade", "")).strip()
+        plies = int(entry.get("plies") or 0)
+        if not shade or plies <= 0:
+            continue
+        rows.append(
+            LayShadeBreakdown(lay=lay, shade=shade, plies=plies, order=i, is_manual=True)
+        )
+    LayShadeBreakdown.objects.bulk_create(rows)
+    return rows
+
+
+def shade_totals(lay) -> list:
+    """Shade · plies · pieces · share, for the screen and the detail page."""
+    total = lay.total_plies
+    return [
+        {
+            "shade": row.shade,
+            "plies": row.plies,
+            "pieces": row.plies * lay.pieces_per_ply,
+            "pct": round(row.plies / total * 100, 1) if total else None,
+            "is_manual": row.is_manual,
+        }
+        for row in lay.shade_breakdown.all()
+    ]
 
 
 # --- remnants ------------------------------------------------------------

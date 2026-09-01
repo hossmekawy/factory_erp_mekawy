@@ -45,6 +45,15 @@ type Breakdown = {
   is_manually_adjusted: boolean;
 };
 
+type Shade = {
+  id: number;
+  shade: string;
+  plies: number;
+  pieces: number;
+  pct: number | null;
+  is_manual: boolean;
+};
+
 type Audit = {
   id: number;
   action: string;
@@ -90,6 +99,7 @@ type Lay = {
   entered_by_name: string;
   lines: Line[];
   size_breakdown: Breakdown[];
+  shade_breakdown: Shade[];
   output: {
     actual_pieces: number;
     rejected_pieces: number;
@@ -321,6 +331,40 @@ function Detail({ id }: { id: string }) {
           </table>
         </div>
       </section>
+
+      {/* ---- 3b. plies per shade ---- */}
+      {lay.shade_breakdown?.length > 0 && (
+        <section className="card mt-3">
+          <h2 className="mb-2 font-bold">الراق لكل لون</h2>
+          <div className="overflow-x-auto">
+            <table className="data" data-testid="shade-table">
+              <thead>
+                <tr>
+                  <th>اللون</th>
+                  <th>الراق</th>
+                  <th>القطع</th>
+                  <th>النسبة</th>
+                </tr>
+              </thead>
+              <tbody>
+                {lay.shade_breakdown.map((sh) => (
+                  <tr key={sh.id}>
+                    <td className="font-semibold">{sh.shade}</td>
+                    <td dir="ltr" className="text-right">{sh.plies}</td>
+                    <td dir="ltr" className="text-right">{sh.pieces}</td>
+                    <td dir="ltr" className="text-right">
+                      {sh.pct != null ? `${sh.pct}%` : "—"}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          {lay.shade_breakdown.some((sh) => sh.is_manual) && (
+            <p className="mt-2 text-xs text-slate-500">مُدخَل يدوي مع الإدخال السريع.</p>
+          )}
+        </section>
+      )}
 
       {/* ---- 4. roll lines ---- */}
       <section className="card mt-3">

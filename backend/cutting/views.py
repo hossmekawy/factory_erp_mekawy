@@ -227,7 +227,7 @@ class LayViewSet(ServiceErrorMixin, viewsets.ModelViewSet):
             Lay.objects.select_related(
                 "bank", "garment_model", "team_leader", "size_set", "entered_by"
             )
-            .prefetch_related("size_breakdown", "output")
+            .prefetch_related("size_breakdown", "shade_breakdown", "output")
         )
         if self.action in ("retrieve", "update", "partial_update"):
             qs = qs.prefetch_related(
@@ -480,6 +480,7 @@ class LayViewSet(ServiceErrorMixin, viewsets.ModelViewSet):
             **{k: v for k, v in values.items()},
             **services.pieces_loss(lay),
             "working_days": lay.working_days,
+            "shades": services.shade_totals(lay),
             "productivity": services.team_leader_productivity(lay),
         })
 

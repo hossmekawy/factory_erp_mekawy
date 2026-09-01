@@ -22,6 +22,7 @@ from .models import (
     LayAudit,
     LayLine,
     LayOutput,
+    LayShadeBreakdown,
     LaySizeBreakdown,
     Notification,
     RemnantLog,
@@ -189,6 +190,15 @@ class LaySizeBreakdownSerializer(serializers.ModelSerializer):
         ]
 
 
+class LayShadeBreakdownSerializer(serializers.ModelSerializer):
+    pieces = serializers.IntegerField(read_only=True)
+    pct = serializers.FloatField(read_only=True)
+
+    class Meta:
+        model = LayShadeBreakdown
+        fields = ["id", "shade", "plies", "pieces", "pct", "is_manual", "order"]
+
+
 class LayOutputSerializer(serializers.ModelSerializer):
     recorded_by_name = serializers.CharField(source="recorded_by.username", read_only=True)
     pieces_loss = serializers.IntegerField(read_only=True)
@@ -326,6 +336,12 @@ class LaySerializer(ModelCleanMixin, serializers.ModelSerializer):
 
     lines = LayLineNestedSerializer(many=True, required=False)
     size_breakdown = LaySizeBreakdownSerializer(many=True, read_only=True)
+    shade_breakdown = LayShadeBreakdownSerializer(many=True, read_only=True)
+    # Quick mode only: [{"shade": "أسود", "plies": 40}]. Optional throughout —
+    # an empty list clears it and the lay closes exactly as before.
+    shade_entries = serializers.ListField(
+        child=serializers.DictField(), write_only=True, required=False
+    )
     output = LayOutputSerializer(read_only=True)
     audit_entries = LayAuditSerializer(many=True, read_only=True)
 
@@ -363,8 +379,8 @@ class LaySerializer(ModelCleanMixin, serializers.ModelSerializer):
             "entered_by", "entered_by_name", "lay_width_cm",
             "lay_length_m", "pieces_per_ply", "entry_mode", "is_backfill",
             "sheet_image", "notes", "status", "status_label", "client_uuid",
-            "lines", "size_breakdown", "output", "audit_entries",
-            "sizes_raw", "edit_reason",
+            "lines", "size_breakdown", "shade_breakdown", "output", "audit_entries",
+            "sizes_raw", "edit_reason", "shade_entries",
             "created_at", "updated_at", "closed_at", "closed_by",
             *DERIVED_FIELDS,
         ]
@@ -417,6 +433,7 @@ class LaySerializer(ModelCleanMixin, serializers.ModelSerializer):
 
     def create(self, validated_data):
         lines_data = validated_data.pop("lines", [])
+        shade_entries = validated_data.pop("shade_entries", None)
         validated_data.pop("edit_reason", None)
         members = validated_data.pop("team_members", [])
         size_set = self._resolve_size_set(validated_data)
@@ -433,11 +450,14 @@ class LaySerializer(ModelCleanMixin, serializers.ModelSerializer):
             line.setdefault("line_no", i)
             LayLine.objects.create(lay=lay, **line)
         services.recalculate(lay)
+        if shade_entries is not None and lay.entry_mode == Lay.MODE_QUICK:
+            services.set_shade_breakdown(lay, shade_entries)
         lay.refresh_from_db()
         return lay
 
     def update(self, instance, validated_data):
         lines_data = validated_data.pop("lines", None)
+        shade_entries = validated_data.pop("shade_entries", None)
         reason = validated_data.pop("edit_reason", "")
         members = validated_data.pop("team_members", None)
         size_set = self._resolve_size_set(validated_data)
@@ -467,6 +487,8 @@ class LaySerializer(ModelCleanMixin, serializers.ModelSerializer):
                 LayLine.objects.create(lay=instance, **line)
 
         services.recalculate(instance)
+        if shade_entries is not None and instance.entry_mode == Lay.MODE_QUICK:
+            services.set_shade_breakdown(instance, shade_entries)
 
         if was_closed:
             # SRS section 3: an edit after closing is recorded, field by field.

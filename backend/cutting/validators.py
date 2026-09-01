@@ -1,4 +1,4 @@
-"""V2 → V10 from SRS 5.5, checked on the backend and never only in the UI.
+"""V2 → V11 from SRS 5.5, checked on the backend and never only in the UI.
 
 V1 (lay width against the narrowest roll) is deliberately absent. It needed a
 width typed for every roll, and the spreader already knows the narrowest roll —
@@ -177,6 +177,32 @@ def check_v8_shade_mix(lines) -> list:
     return []
 
 
+def check_v11_shade_plies(lay) -> list:
+    """A hand-entered shade split must add up to the lay's total plies.
+
+    A **warning, never a block** — same reasoning as V4. The split is optional
+    and informational; refusing to close over it would only teach the
+    supervisor to leave it empty, which loses the very number he wanted.
+    """
+    rows = [r for r in lay.shade_breakdown.all() if r.is_manual]
+    if not rows:
+        return []
+    entered = sum(r.plies for r in rows)
+    if entered == lay.total_plies:
+        return []
+    gap = entered - lay.total_plies
+    direction = "أكتر" if gap > 0 else "أقل"
+    return [
+        Issue(
+            "V11",
+            WARNING,
+            f"مجموع الراق حسب اللون ({entered}) {direction} من إجمالي الراق "
+            f"({lay.total_plies}) بفرق {abs(gap)}",
+            field="shade_breakdown",
+        )
+    ]
+
+
 def check_v9_actual_not_above_theoretical(lay, actual_pieces: int) -> list:
     if actual_pieces > lay.theoretical_pieces:
         return [
@@ -209,6 +235,7 @@ def validate_for_close(lay, settings=None) -> list:
     issues += check_v6_breakdown_total(lay, breakdown)
     issues += check_v7_team_leader_present(lay)
     issues += check_v8_shade_mix(lines)
+    issues += check_v11_shade_plies(lay)
 
     # SRS 4.6: the notebook page is the original record — no closing without it.
     if not lay.sheet_image:

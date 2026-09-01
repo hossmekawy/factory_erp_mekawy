@@ -145,6 +145,42 @@ export function quickTotals(
   };
 }
 
+export type ShadeTotal = {
+  shade: string;
+  plies: number;
+  pieces: number;
+  pct: number | null;
+};
+
+/**
+ * Plies per shade, mirroring services.shade_plies_from_lines.
+ *
+ * The splice comes off the shade of the line that was spliced, which is what
+ * keeps these adding up to the same total the ply counter shows.
+ */
+export function shadeTotals(
+  lines: LineDraft[],
+  piecesPerPly: number
+): ShadeTotal[] {
+  const byShade = new Map<string, number>();
+  for (const line of lines) {
+    const shade = line.shade_note.trim();
+    if (!shade) continue;
+    const plies = num(line.plies) - (line.roll_end_action === "splice" ? 1 : 0);
+    byShade.set(shade, (byShade.get(shade) ?? 0) + plies);
+  }
+
+  const total = [...byShade.values()].reduce((s, p) => s + p, 0);
+  return [...byShade.entries()]
+    .filter(([, plies]) => plies > 0)
+    .map(([shade, plies]) => ({
+      shade,
+      plies,
+      pieces: plies * piecesPerPly,
+      pct: total > 0 ? Math.round((plies / total) * 1000) / 10 : null,
+    }));
+}
+
 /** SRS 5.4: under the threshold it is waste, at or above it is reusable. */
 export function remnantIsWaste(remnantM: number, thresholdM = 1): boolean {
   return remnantM > 0 && remnantM < thresholdM;
