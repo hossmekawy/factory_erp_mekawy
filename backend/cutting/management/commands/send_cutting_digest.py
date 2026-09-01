@@ -57,45 +57,61 @@ class Command(BaseCommand):
             .order_by("recipient_id", "created_at")
         )
 
-        by_recipient = {}
-        for note in pending:
-            by_recipient.setdefault(note.recipient, []).append(note)
-
-        if not by_recipient:
+        if not pending:
             self.stdout.write("مفيش تنبيهات جديدة تتبعت")
             return
 
+        # Group by ADDRESS, not by user. Five people can share one inbox — the
+        # notify_emails setting routes everyone to the same address on a small
+        # install — and grouping by user sends that address five copies of the
+        # same lay, which is exactly the pile-up a digest exists to prevent.
         extra = _extra_addresses()
-        sent_ids = []
+        by_address = {}
+        no_address = []
+        for note in pending:
+            addresses = [a for a in [note.recipient.email, *extra] if a]
+            if not addresses:
+                no_address.append(note)
+                continue
+            for address in addresses:
+                bucket = by_address.setdefault(address, {})
+                # Keyed by the EVENT, not the row. One shortage writes a row
+                # per recipient, and when those recipients share an inbox the
+                # same lay would otherwise be listed once per person.
+                bucket.setdefault((note.lay_id, note.kind), []).append(note)
+
+        sent_ids = set()
         connection = None if dry else get_connection()
 
-        for user, notes in by_recipient.items():
-            to = [a for a in [user.email, *extra] if a]
+        for address, bucket in by_address.items():
+            groups = sorted(bucket.values(), key=lambda g: g[0].created_at)
+            notes = [g[0] for g in groups]           # one representative each
+            covered = [n.id for g in groups for n in g]  # every row it stands for
             subject = f"تنبيهات القص — {len(notes)} فرشة"
-            body = _body(user, notes)
+            body = _body(address, notes)
 
-            if dry or not to:
-                reason = "معاينة" if dry else "مفيش إيميل للمستخدم ده"
-                self.stdout.write(f"[{reason}] {user.username}: {len(notes)} تنبيه")
+            if dry:
+                self.stdout.write(f"[معاينة] {address}: {len(notes)} تنبيه")
                 self.stdout.write(body)
-                if dry:
-                    continue
-                # No address to send to, but the alert is still in the system;
-                # marking it stops it queueing up forever.
-                sent_ids += [n.id for n in notes]
                 continue
 
             try:
                 EmailMessage(
                     subject=subject, body=body,
                     from_email=getattr(settings, "DEFAULT_FROM_EMAIL", None),
-                    to=to, connection=connection,
+                    to=[address], connection=connection,
                 ).send()
             except Exception as exc:  # noqa: BLE001 — one bad address must not
-                self.stderr.write(f"فشل إرسال إيميل {user.username}: {exc}")  # stop the rest
+                self.stderr.write(f"فشل إرسال إيميل {address}: {exc}")  # stop the rest
                 continue
-            sent_ids += [n.id for n in notes]
-            self.stdout.write(f"اتبعت لـ {user.username} ({len(notes)} تنبيه)")
+            sent_ids.update(covered)
+            self.stdout.write(f"اتبعت لـ {address} ({len(notes)} تنبيه)")
+
+        if no_address and not dry:
+            # Nobody to mail, but the alert is in the system and visible there;
+            # marking it stops it queueing up forever.
+            self.stdout.write(f"{len(no_address)} تنبيه مالوش إيميل — اتساب في السيستم بس")
+            sent_ids.update(n.id for n in no_address)
 
         if sent_ids and not dry:
             Notification.objects.filter(id__in=sent_ids).update(emailed_at=timezone.now())
@@ -107,8 +123,8 @@ def _extra_addresses():
     return [a.strip() for a in raw.replace("\n", ",").split(",") if a.strip()]
 
 
-def _body(user, notes) -> str:
-    lines = [f"أهلاً {user.get_full_name() or user.username}،", ""]
+def _body(address, notes) -> str:
+    lines = ["أهلاً،", ""]
     lines.append(f"فيه {len(notes)} تنبيه من موديول القص:")
     lines.append("")
     for note in notes:

@@ -174,6 +174,44 @@ class TestDigest:
         assert len(to_sup) == 1
         assert "3" in to_sup[0].subject
 
+    def test_one_address_gets_one_email_however_many_people_share_it(
+        self, make_lay, user, as_role
+    ):
+        """notify_emails routes several people to one inbox on a small
+        install. Grouping by user would send that inbox a copy each — the
+        exact pile-up a digest exists to prevent."""
+        from cutting.models import CuttingSettings
+
+        for role in ["cutting_supervisor", "production_manager", "admin"]:
+            as_role(role)
+        settings_row = CuttingSettings.get_solo()
+        settings_row.notify_emails = "shared@example.com"
+        settings_row.save()
+
+        lay = make_lay(lines=[
+            {"roll_length_m": "101.00", "plies": 20, "remnant_m": "0.50"},
+        ])
+        services.close_lay(lay, user, override_reason="اختبار")
+
+        call_command("send_cutting_digest")
+        to_shared = [m for m in mail.outbox if "shared@example.com" in m.to]
+        assert len(to_shared) == 1, [m.to for m in mail.outbox]
+        # and the one email names the lay once, not three times
+        assert to_shared[0].body.count(f"فرشة {lay.pk}") == 1
+
+    def test_an_alert_with_nobody_to_mail_is_not_left_queued_forever(
+        self, make_lay, user, as_role
+    ):
+        as_role("cutting_supervisor")  # no email address on the account
+        lay = make_lay(lines=[
+            {"roll_length_m": "101.00", "plies": 20, "remnant_m": "0.50"},
+        ])
+        services.close_lay(lay, user, override_reason="اختبار")
+        call_command("send_cutting_digest")
+        assert Notification.objects.filter(
+            kind="shortage", emailed_at__isnull=True
+        ).count() == 0
+
     def test_dry_run_sends_nothing_and_marks_nothing(self, with_alerts):
         call_command("send_cutting_digest", "--dry-run")
         assert mail.outbox == []
@@ -225,3 +263,103 @@ class TestNotificationApi:
     def test_they_are_read_only(self, as_role):
         assert as_role("admin").post("/api/cutting/notifications/", {},
                                      format="json").status_code == 405
+
+
+class TestResendBackend:
+    """The Resend adapter (config/email_backends.py). No network here — the
+    library call is stubbed; what is under test is the payload we hand it."""
+
+    def _backend(self, monkeypatch, sent, api_key="re_test"):
+        from config.email_backends import ResendBackend
+
+        class FakeEmails:
+            @staticmethod
+            def send(payload):
+                sent.append(payload)
+                return {"id": "fake"}
+
+        import resend
+
+        monkeypatch.setattr(resend, "Emails", FakeEmails)
+        backend = ResendBackend()
+        backend.api_key = api_key
+        return backend
+
+    def test_a_plain_message_becomes_a_text_payload(self, monkeypatch, settings):
+        from django.core.mail import EmailMessage
+
+        sent = []
+        backend = self._backend(monkeypatch, sent)
+        count = backend.send_messages([
+            EmailMessage(subject="عنوان", body="نص", from_email="a@b.c", to=["x@y.z"])
+        ])
+        assert count == 1
+        assert sent[0]["to"] == ["x@y.z"]
+        assert sent[0]["subject"] == "عنوان"
+        assert sent[0]["text"] == "نص"
+        assert "html" not in sent[0]
+
+    def test_an_html_message_becomes_an_html_payload(self, monkeypatch):
+        from django.core.mail import EmailMessage
+
+        sent = []
+        backend = self._backend(monkeypatch, sent)
+        msg = EmailMessage(subject="s", body="<b>hi</b>", from_email="a@b.c", to=["x@y.z"])
+        msg.content_subtype = "html"
+        backend.send_messages([msg])
+        assert sent[0]["html"] == "<b>hi</b>"
+
+    def test_cc_bcc_and_reply_to_are_carried(self, monkeypatch):
+        from django.core.mail import EmailMessage
+
+        sent = []
+        backend = self._backend(monkeypatch, sent)
+        backend.send_messages([
+            EmailMessage(subject="s", body="b", from_email="a@b.c", to=["x@y.z"],
+                         cc=["c@y.z"], bcc=["d@y.z"], reply_to=["r@y.z"])
+        ])
+        assert sent[0]["cc"] == ["c@y.z"]
+        assert sent[0]["bcc"] == ["d@y.z"]
+        assert sent[0]["reply_to"] == ["r@y.z"]
+
+    def test_one_failure_does_not_stop_the_rest(self, monkeypatch):
+        from django.core.mail import EmailMessage
+
+        from config.email_backends import ResendBackend
+
+        calls = []
+
+        class FlakyEmails:
+            @staticmethod
+            def send(payload):
+                calls.append(payload)
+                if payload["to"] == ["bad@y.z"]:
+                    raise RuntimeError("rejected")
+                return {"id": "ok"}
+
+        import resend
+
+        monkeypatch.setattr(resend, "Emails", FlakyEmails)
+        backend = ResendBackend(fail_silently=True)
+        backend.api_key = "re_test"
+        count = backend.send_messages([
+            EmailMessage(subject="s", body="b", from_email="a@b.c", to=["bad@y.z"]),
+            EmailMessage(subject="s", body="b", from_email="a@b.c", to=["good@y.z"]),
+        ])
+        assert len(calls) == 2      # it tried both
+        assert count == 1           # and reported only the one that landed
+
+    def test_a_missing_key_is_refused_not_silently_dropped(self, monkeypatch):
+        from django.core.mail import EmailMessage
+
+        sent = []
+        backend = self._backend(monkeypatch, sent, api_key="")
+        with pytest.raises(ValueError):
+            backend.send_messages([
+                EmailMessage(subject="s", body="b", from_email="a@b.c", to=["x@y.z"])
+            ])
+        assert sent == []
+
+    def test_nothing_to_send_is_not_an_error(self, monkeypatch):
+        sent = []
+        assert self._backend(monkeypatch, sent, api_key="").send_messages([]) == 0
