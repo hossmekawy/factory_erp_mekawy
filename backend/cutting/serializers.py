@@ -22,6 +22,7 @@ from .models import (
     LayLine,
     LayOutput,
     LaySizeBreakdown,
+    Notification,
     RemnantLog,
     SavedFilter,
     SizeSet,
@@ -215,6 +216,18 @@ class LayAuditSerializer(serializers.ModelSerializer):
         model = LayAudit
         fields = ["id", "action", "field", "old_value", "new_value", "reason",
                   "user", "user_name", "at"]
+
+
+class NotificationSerializer(serializers.ModelSerializer):
+    kind_label = serializers.CharField(source="get_kind_display", read_only=True)
+    lay_code = serializers.CharField(source="lay.garment_model.code", read_only=True,
+                                     default="")
+
+    class Meta:
+        model = Notification
+        fields = ["id", "kind", "kind_label", "lay", "lay_code", "title", "body",
+                  "is_read", "read_at", "created_at"]
+        read_only_fields = fields
 
 
 class SavedFilterSerializer(serializers.ModelSerializer):

@@ -636,6 +636,58 @@ class SavedFilter(models.Model):
         return self.name
 
 
+class Notification(models.Model):
+    """An in-system alert (SRS 11.1), and the queue the daily email digest
+    draws from.
+
+    One row per (lay, kind, recipient): the same shortage must not pile up a
+    new alert every time the lay is recalculated.
+    """
+
+    KIND_SHORTAGE = "shortage"
+    KIND_PIECES_LOSS = "pieces_loss"
+    KIND_AWAITING_COUNT = "awaiting_count"
+    KIND_CHOICES = (
+        (KIND_SHORTAGE, "عجز في القماش"),
+        (KIND_PIECES_LOSS, "فاقد في القطع"),
+        (KIND_AWAITING_COUNT, "مستنية ترقيم"),
+    )
+
+    recipient = models.ForeignKey(
+        User, on_delete=models.CASCADE, related_name="cutting_notifications"
+    )
+    kind = models.CharField(max_length=20, choices=KIND_CHOICES, verbose_name="النوع")
+    lay = models.ForeignKey(
+        Lay, on_delete=models.CASCADE, related_name="notifications", null=True, blank=True
+    )
+    title = models.CharField(max_length=200, verbose_name="العنوان")
+    body = models.TextField(blank=True, verbose_name="التفاصيل")
+    is_read = models.BooleanField(default=False, verbose_name="مقروء")
+    read_at = models.DateTimeField(null=True, blank=True)
+    # Null until the daily digest has carried it. Keeps the digest from
+    # sending the same alert twice, and lets it batch a whole day into one
+    # message instead of an email per lay (SRS 11.1).
+    emailed_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = "تنبيه"
+        verbose_name_plural = "التنبيهات"
+        ordering = ["-created_at", "-id"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["lay", "kind", "recipient"], name="uniq_lay_notification"
+            ),
+        ]
+        indexes = [
+            models.Index(fields=["recipient", "is_read"], name="notif_recipient_idx"),
+            models.Index(fields=["emailed_at"], name="notif_emailed_idx"),
+        ]
+
+    def __str__(self):
+        return f"{self.get_kind_display()} — {self.title}"
+
+
 class LayAudit(models.Model):
     """Who changed what after the lay was closed, and why (SRS section 10)."""
 

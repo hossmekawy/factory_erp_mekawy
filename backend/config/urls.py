@@ -32,6 +32,9 @@ cutting_router.register(
     "saved-filters", cutting_views.SavedFilterViewSet, basename="saved-filter"
 )
 cutting_router.register("settings", cutting_views.CuttingSettingsViewSet)
+cutting_router.register(
+    "notifications", cutting_views.NotificationViewSet, basename="notification"
+)
 
 urlpatterns = [
     path("admin/", admin.site.urls),
@@ -53,6 +56,7 @@ urlpatterns = [
     path("api/reports/weekly/export/", hr_views.weekly_report_export),
     path("api/reports/weekly/pdf/", hr_views.weekly_report_pdf),
     path("api/cutting/team-leaders/", cutting_views.team_leaders),
+    path("api/cutting/reports/<str:name>/", cutting_views.report_view),
     path("api/cutting/", include(cutting_router.urls)),
     path("api/", include(router.urls)),
 ]

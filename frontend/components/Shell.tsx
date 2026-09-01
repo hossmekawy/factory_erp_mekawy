@@ -5,6 +5,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import {
   BarChart3,
+  Bell,
   ChevronDown,
   ClipboardList,
   Clock,
@@ -68,6 +69,7 @@ const NAV_GROUPS: NavGroup[] = [
       { href: "/cutting/count", label: "الترقيم", Icon: ClipboardList, roles: CUTTING_ROLES },
       { href: "/cutting/models", label: "الموديلات", Icon: Shirt, roles: CUTTING_ROLES },
       { href: "/cutting/fits", label: "القَصّات", Icon: Ruler, roles: CUTTING_ROLES },
+      { href: "/cutting/reports", label: "تقارير القص", Icon: BarChart3, roles: CUTTING_ROLES },
     ],
   },
   {
@@ -93,6 +95,27 @@ const NAV_GROUPS: NavGroup[] = [
   },
 ];
 
+function NotificationBell({ unread }: { unread: number }) {
+  return (
+    <Link
+      href="/cutting/notifications"
+      data-testid="notification-bell"
+      className="relative rounded-lg p-2 text-slate-500 hover:bg-red-50 hover:text-red-700"
+      aria-label={unread ? `${unread} تنبيه غير مقروء` : "التنبيهات"}
+    >
+      <Bell className="h-5 w-5" />
+      {unread > 0 && (
+        <span
+          data-testid="unread-badge"
+          className="absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-red-600 px-1 text-[10px] font-bold text-white"
+        >
+          {unread > 99 ? "99+" : unread}
+        </span>
+      )}
+    </Link>
+  );
+}
+
 export default function Shell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
@@ -103,6 +126,10 @@ export default function Shell({ children }: { children: React.ReactNode }) {
   // Manual open/close overrides per dropdown group; without an override a
   // group is open when it contains the current page (or it's the only group).
   const [groupOpen, setGroupOpen] = useState<Record<string, boolean>>({});
+  // Unread cutting alerts (SRS 11.1). Polled rather than pushed: the events
+  // are a handful a day, and a websocket for that would be infrastructure
+  // nobody has to maintain today.
+  const [unread, setUnread] = useState(0);
   const [companyName, setCompanyName] = useState("MR.Mekawy");
   const [logoUrl, setLogoUrl] = useState<string | null>(null);
   // A stored icon can be a truncated upload. The URL still returns 200 with
@@ -138,6 +165,17 @@ export default function Shell({ children }: { children: React.ReactNode }) {
       })
       .catch(() => {});
   }, []);
+
+  useEffect(() => {
+    if (!ready) return;
+    const poll = () =>
+      api("/api/cutting/notifications/unread_count/")
+        .then((d) => setUnread(d.unread))
+        .catch(() => {}); // no access to the module, or not migrated yet
+    poll();
+    const id = setInterval(poll, 60000);
+    return () => clearInterval(id);
+  }, [ready, pathname]);
 
   // Close the drawer whenever the route changes.
   useEffect(() => {
@@ -278,10 +316,11 @@ export default function Shell({ children }: { children: React.ReactNode }) {
           <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-red-600 text-xs font-bold text-white">
             {initial}
           </div>
-          <div className="min-w-0">
+          <div className="min-w-0 flex-1">
             <div className="truncate font-semibold text-slate-800">{username}</div>
             <div className="text-xs text-slate-400">{ROLE_LABEL[role] ?? role}</div>
           </div>
+          <NotificationBell unread={unread} />
         </div>
         <button
           onClick={() => {
@@ -322,13 +361,16 @@ export default function Shell({ children }: { children: React.ReactNode }) {
             {logoBadge("h-8 w-8")}
             <div className="font-bold text-slate-900">{companyName}</div>
           </div>
-          <button
-            onClick={() => setOpen(true)}
-            className="rounded-lg p-2 text-red-700 hover:bg-red-50"
-            aria-label="القائمة"
-          >
-            <Menu className="h-6 w-6" />
-          </button>
+          <div className="flex items-center gap-1">
+            <NotificationBell unread={unread} />
+            <button
+              onClick={() => setOpen(true)}
+              className="rounded-lg p-2 text-red-700 hover:bg-red-50"
+              aria-label="القائمة"
+            >
+              <Menu className="h-6 w-6" />
+            </button>
+          </div>
         </header>
         <main className="min-w-0 flex-1 p-4 sm:p-6">{children}</main>
       </div>

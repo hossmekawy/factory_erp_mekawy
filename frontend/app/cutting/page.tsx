@@ -11,6 +11,8 @@ import {
   Bookmark,
   Camera,
   ChevronDown,
+  FileSpreadsheet,
+  FileText,
   Filter,
   Loader2,
   Plus,
@@ -19,7 +21,7 @@ import {
   X,
 } from "lucide-react";
 import Shell from "@/components/Shell";
-import { api, errorText } from "@/lib/api";
+import { api, downloadFile, errorText } from "@/lib/api";
 import { fmt } from "@/lib/cutting";
 import {
   FILTER_GROUPS,
@@ -109,6 +111,10 @@ function LayList() {
   // The search box is the one control that is not read straight from the URL:
   // it types faster than a route change should follow.
   const [q, setQ] = useState(params.get("q") ?? "");
+  // What this box itself last pushed into the URL. Without it, the sync below
+  // fires on our own debounced write and reverts anything typed in between —
+  // type "MEGAN" fast enough and you get "MEGA" back.
+  const [pushed, setPushed] = useState(params.get("q") ?? "");
 
   const queryString = params.toString();
 
@@ -129,13 +135,22 @@ function LayList() {
   useEffect(() => {
     const current = params.get("q") ?? "";
     if (q === current) return;
-    const t = setTimeout(() => setParams({ q: q || null }), 300);
+    const t = setTimeout(() => {
+      setPushed(q);
+      setParams({ q: q || null });
+    }, 300);
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [q]);
 
+  // Adopt the URL only when it changed from somewhere else — a saved search,
+  // "clear all", the back button — never in reply to our own write.
   useEffect(() => {
-    setQ(params.get("q") ?? "");
+    const fromUrl = params.get("q") ?? "";
+    if (fromUrl !== pushed) {
+      setQ(fromUrl);
+      setPushed(fromUrl);
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [queryString]);
 
@@ -220,10 +235,39 @@ function LayList() {
     <div className="font-tajawal mx-auto max-w-7xl p-3">
       <div className="mb-3 flex items-center justify-between gap-2">
         <h1 className="text-lg font-bold">الفرشات</h1>
-        <Link href="/cutting/new" className="btn-primary">
-          <Plus className="h-4 w-4" />
-          فرشة جديدة
-        </Link>
+        <div className="flex items-center gap-2">
+          {/* Exports carry whatever filters are applied (SRS 7.1). */}
+          <button
+            data-testid="export-xlsx"
+            className="btn-secondary"
+            onClick={() =>
+              downloadFile(
+                `/api/cutting/lays/export/?${queryString}${queryString ? "&" : ""}export=xlsx`,
+                "cutting-lays.xlsx"
+              ).catch((e) => setError(errorText(e)))
+            }
+          >
+            <FileSpreadsheet className="h-4 w-4" />
+            <span className="hidden sm:inline">إكسيل</span>
+          </button>
+          <button
+            data-testid="export-pdf"
+            className="btn-secondary"
+            onClick={() =>
+              downloadFile(
+                `/api/cutting/lays/export/?${queryString}${queryString ? "&" : ""}export=pdf`,
+                "cutting-lays.pdf"
+              ).catch((e) => setError(errorText(e)))
+            }
+          >
+            <FileText className="h-4 w-4" />
+            <span className="hidden sm:inline">PDF</span>
+          </button>
+          <Link href="/cutting/new" className="btn-primary">
+            <Plus className="h-4 w-4" />
+            <span className="hidden sm:inline">فرشة جديدة</span>
+          </Link>
+        </div>
       </div>
 
       {/* ---- summary cards ---- */}

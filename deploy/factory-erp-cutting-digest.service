@@ -1,0 +1,10 @@
+[Unit]
+Description=MR.Mekawy Factory ERP — daily cutting digest (SRS 11.1)
+After=network.target postgresql.service
+
+[Service]
+Type=oneshot
+WorkingDirectory=/root/factory_erp/backend
+ExecStart=/root/factory_erp/backend/venv/bin/python manage.py send_cutting_digest
+# Nothing to restart: if a day's digest fails, the alerts stay unsent and the
+# next run picks them up, because emailed_at is only stamped on success.

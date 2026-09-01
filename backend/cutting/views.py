@@ -11,6 +11,7 @@ import datetime
 
 from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db.models import ProtectedError
+from django.http import HttpResponse
 from django.db import models
 from django.db.models import Avg, Count, Prefetch, Sum
 from rest_framework import status, viewsets
@@ -21,7 +22,8 @@ from rest_framework.response import Response
 from hr.attendance import present_codes
 from hr.models import Employee
 
-from . import exceptions, filters, search, services
+from . import exceptions, filters, notifications, search, services
+from . import reports as cutting_reports
 from . import sizes as size_utils
 from . import validators
 from .models import (
@@ -31,6 +33,7 @@ from .models import (
     GarmentModel,
     Lay,
     LayLine,
+    Notification,
     RemnantLog,
     SavedFilter,
     SizeSet,
@@ -51,6 +54,7 @@ from .serializers import (
     LayListSerializer,
     LaySerializer,
     RecordOutputSerializer,
+    NotificationSerializer,
     RemnantLogSerializer,
     SavedFilterSerializer,
     SizeSetSerializer,
@@ -374,6 +378,55 @@ class LayViewSet(ServiceErrorMixin, viewsets.ModelViewSet):
         return response
 
     @action(detail=False, methods=["get"])
+    def export(self, request):
+        """Excel or PDF of the list, under whatever filters are applied —
+        the same queryset the screen is showing (SRS 7.1)."""
+        qs = self.filter_queryset(self.get_queryset())
+        rows = [
+            {
+                "id": lay.pk,
+                "date": (
+                    f"{lay.start_date} → {lay.end_date}"
+                    if lay.is_multi_day else str(lay.start_date)
+                ),
+                "code": lay.garment_model.code,
+                "model": lay.garment_model.name,
+                "sizes": " ".join(b.size for b in lay.size_breakdown.all()),
+                "lay_length_m": lay.lay_length_m,
+                "pieces_per_ply": lay.pieces_per_ply,
+                "total_plies": lay.total_plies,
+                "theoretical_pieces": lay.theoretical_pieces,
+                "actual_pieces": getattr(getattr(lay, "output", None), "actual_pieces", None),
+                "expected_metrage": lay.expected_metrage,
+                "real_metrage": lay.real_metrage,
+                "deviation_pct": lay.deviation_pct,
+                "shortage": lay.fabric_shortage_m,
+                "team_leader": lay.team_leader.full_name,
+                "bank": lay.bank.name,
+                "status": lay.get_status_display(),
+            }
+            for lay in qs.prefetch_related("size_breakdown")
+        ]
+        report = {
+            "title": "الفرشات",
+            "period": {
+                "start": request.query_params.get("date_from"),
+                "end": request.query_params.get("date_to"),
+            },
+            "columns": [
+                ("id", "#"), ("date", "التاريخ"), ("code", "الكود"), ("model", "الموديل"),
+                ("sizes", "المقاسات"), ("lay_length_m", "طول الفرشة"),
+                ("pieces_per_ply", "ق/راق"), ("total_plies", "إجمالي الراق"),
+                ("theoretical_pieces", "القطع النظرية"), ("actual_pieces", "القطع الفعلية"),
+                ("expected_metrage", "المتوقع"), ("real_metrage", "الحقيقي"),
+                ("deviation_pct", "الانحراف %"), ("shortage", "العجز"),
+                ("team_leader", "رئيس الفريق"), ("bank", "البنك"), ("status", "الحالة"),
+            ],
+            "rows": rows,
+        }
+        return _as_download(report, request.query_params.get("export", "xlsx"), "cutting-lays")
+
+    @action(detail=False, methods=["get"])
     def summary(self, request):
         """The cards above the list, over whatever filters are applied."""
         qs = self.filter_queryset(self.get_queryset())
@@ -444,6 +497,35 @@ class LayViewSet(ServiceErrorMixin, viewsets.ModelViewSet):
         return Response(LaySerializer(lay, context=self.get_serializer_context()).data)
 
 
+class NotificationViewSet(ServiceErrorMixin, viewsets.ReadOnlyModelViewSet):
+    """Each user sees only their own alerts (SRS 11.1)."""
+
+    serializer_class = NotificationSerializer
+    permission_classes = [CanViewCutting]
+    filterset_fields = ["kind", "is_read"]
+    ordering = ["-created_at"]
+
+    def get_queryset(self):
+        return Notification.objects.filter(
+            recipient=self.request.user
+        ).select_related("lay", "lay__garment_model")
+
+    @action(detail=False, methods=["get"])
+    def unread_count(self, request):
+        return Response({
+            "unread": Notification.objects.filter(
+                recipient=request.user, is_read=False
+            ).count()
+        })
+
+    @action(detail=False, methods=["post"], url_path="mark-read")
+    def mark_read(self, request):
+        """Pass `ids` to mark some, or nothing at all to mark everything."""
+        ids = request.data.get("ids")
+        marked = notifications.mark_read(request.user, ids)
+        return Response({"marked": marked})
+
+
 class SavedFilterViewSet(ServiceErrorMixin, viewsets.ModelViewSet):
     """Named searches. Everyone sees their own plus anything marked shared."""
 
@@ -494,6 +576,58 @@ class RemnantLogViewSet(ServiceErrorMixin, viewsets.ReadOnlyModelViewSet):
     filterset_class = filters.RemnantLogFilter
     search_fields = ["article", "lot_no", "shade_note"]
     ordering_fields = ["logged_at", "length_m"]
+
+
+def _parse_date(request, name):
+    raw = request.query_params.get(name)
+    if not raw:
+        return None
+    try:
+        return datetime.date.fromisoformat(raw)
+    except ValueError:
+        return None
+
+
+def _as_download(report, fmt, stem):
+    """json / xlsx / pdf from the same report dict (the hr/reports.py pattern).
+
+    The query parameter is `export`, not `format`: DRF reserves `format` for
+    picking a renderer and answers 404 for a value it has no renderer for,
+    before the view ever runs.
+    """
+    if fmt == "xlsx":
+        buf = cutting_reports.report_xlsx(report)
+        response = HttpResponse(
+            buf.read(),
+            content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        )
+        response["Content-Disposition"] = f'attachment; filename="{stem}.xlsx"'
+        return response
+    if fmt == "pdf":
+        buf = cutting_reports.report_pdf(report)
+        response = HttpResponse(buf.read(), content_type="application/pdf")
+        response["Content-Disposition"] = f'attachment; filename="{stem}.pdf"'
+        return response
+    return Response(report)
+
+
+@api_view(["GET"])
+@permission_classes([CanViewCutting])
+def report_view(request, name):
+    """/api/cutting/reports/{name}/?date_from=&date_to=&format=json|xlsx|pdf"""
+    builder = cutting_reports.REPORTS.get(name)
+    if builder is None:
+        return Response(
+            {"detail": "التقرير ده مش موجود",
+             "available": sorted(cutting_reports.REPORTS)},
+            status=status.HTTP_404_NOT_FOUND,
+        )
+    report = builder(
+        start=_parse_date(request, "date_from"),
+        end=_parse_date(request, "date_to"),
+        include_backfill=request.query_params.get("include_backfill") == "true",
+    )
+    return _as_download(report, request.query_params.get("export", "json"), f"cutting-{name}")
 
 
 @api_view(["GET"])

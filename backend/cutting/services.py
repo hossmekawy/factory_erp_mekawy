@@ -18,6 +18,7 @@ from django.utils import timezone
 
 from hr.attendance import hours_for
 
+from . import notifications
 from . import sizes as size_utils
 from . import validators
 from .models import CuttingSettings, Lay, LayAudit, LayOutput, LaySizeBreakdown, RemnantLog
@@ -265,6 +266,8 @@ def close_lay(lay, user, override_reason: str = "") -> dict:
         reason=override_reason,
         new_value="; ".join(str(w) for w in warnings),
     )
+    # SRS 11.1. Wrapped: an alert must never roll back the close it describes.
+    notifications.safe(notifications.notify_shortage, lay)
     return {"values": values, "issues": issues}
 
 
@@ -302,6 +305,7 @@ def record_output(
         new_value=str(actual_pieces),
         reason=notes,
     )
+    notifications.safe(notifications.notify_pieces_loss, lay, pieces_loss(lay))
     return output
 
 

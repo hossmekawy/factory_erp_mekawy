@@ -10,7 +10,6 @@
 //
 // Needs a `qa_sup` user in the cutting_supervisor group on the dev database,
 // at least one bank, and the model 1749. It never touches production.
-
 import { chromium, devices } from "playwright";
 import path from "node:path";
 
@@ -46,6 +45,12 @@ async function makePage(device) {
 const { p: page, errs } = await makePage(devices["Desktop Chrome"]);
 const shot = (n) => SHOTS ? page.screenshot({ path: path.join(SHOTS, `${n}.png`), fullPage: true }) : null;
 const rowCount = async () => (await page.locator("tbody tr").count());
+const countFromApi = async (qs) => {
+  const r = await fetch(`${BASE}/api/cutting/lays/?${qs}`, {
+    headers: { Authorization: `Bearer ${tok.access}` },
+  });
+  return (await r.json()).count;
+};
 
 async function go(url) {
   await page.goto(BASE + url, { waitUntil: "networkidle" });
@@ -64,13 +69,21 @@ await shot("d1-list");
 // ---------------------------------------------------------------- 2
 console.log("\n2. shorthand search narrows the list and explains itself");
 await go("/cutting");
+const unfiltered = await countFromApi("");
 await page.locator('input[placeholder*="ابحث"]').fill("عجز:نعم");
-await page.waitForTimeout(1200);
-check("URL carries the query", page.url().includes("q="), page.url());
+// Wait for the URL rather than a sleep — the box is debounced.
+const landed = await page
+  .waitForURL(/[?&]q=/, { timeout: 8000 })
+  .then(() => true)
+  .catch(() => false);
+check("URL carries the query", landed, page.url());
+await page.waitForTimeout(600);
 const chip = await page.getByText("فيها عجز").first().isVisible();
 check("the parsed token shows as a chip", chip);
-const narrowed = await rowCount();
-check("fewer rows than unfiltered", narrowed < total, `${narrowed} of ${total}`);
+// Compare totals, not rendered rows: a full page caps at the page size.
+const filtered = await countFromApi("has_shortage=true");
+check("fewer results than unfiltered", filtered < unfiltered,
+      `${filtered} of ${unfiltered}`);
 await shot("d2-search");
 
 // ---------------------------------------------------------------- 3
