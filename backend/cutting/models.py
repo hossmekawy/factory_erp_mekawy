@@ -283,9 +283,6 @@ class Lay(models.Model):
         max_digits=6, decimal_places=2, validators=[MinValueValidator(Decimal("0.01"))],
         verbose_name="عرض الفرشة (سم)",
     )
-    narrowest_width_cm = models.DecimalField(
-        max_digits=6, decimal_places=2, null=True, blank=True, verbose_name="عرض أضيق توب (سم)"
-    )
     lay_length_m = models.DecimalField(
         max_digits=8, decimal_places=2, validators=[MinValueValidator(Decimal("0.01"))],
         verbose_name="طول الفرشة (م)",
@@ -489,12 +486,6 @@ class LayLine(models.Model):
     plies = models.PositiveIntegerField(verbose_name="الراق")
     remnant_m = models.DecimalField(
         max_digits=8, decimal_places=2, default=Decimal("0"), verbose_name="الباقي (م)"
-    )
-    width_cm = models.DecimalField(
-        max_digits=6, decimal_places=2, null=True, blank=True, verbose_name="عرض التوب (سم)"
-    )
-    net_weight_kg = models.DecimalField(
-        max_digits=7, decimal_places=3, null=True, blank=True, verbose_name="الوزن الصافي (كجم)"
     )
 
     shade_note = models.CharField(max_length=100, blank=True, verbose_name="توصيف اللون")

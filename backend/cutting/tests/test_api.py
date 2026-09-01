@@ -41,10 +41,10 @@ class TestPermissions:
         assert as_role(role).get("/api/cutting/lays/").status_code == 200
 
     @pytest.mark.parametrize("role,expected", [
-        ("admin", 200), ("cutting_supervisor", 200),
-        ("production_manager", 403), ("cutting", 403),
+        ("admin", 200), ("cutting_supervisor", 200), ("cutting", 200),
+        ("production_manager", 403),
     ])
-    def test_only_the_supervisor_and_admin_may_write(
+    def test_the_supervisor_roles_write_and_the_manager_reads(
         self, as_role, role, expected, make_lay
     ):
         lay = make_lay()
@@ -57,6 +57,25 @@ class TestPermissions:
         res = as_role("production_manager").post(f"/api/cutting/lays/{lay.pk}/close/",
                                                  {}, format="json")
         assert res.status_code == 403
+
+    def test_the_cutting_group_is_the_supervisor_under_another_name(
+        self, as_role, make_lay
+    ):
+        """The real supervisor's account will be in this group."""
+        lay = make_lay()
+        client = as_role("cutting")
+        assert client.post(f"/api/cutting/lays/{lay.pk}/close/",
+                           {}, format="json").status_code == 200
+        assert client.post("/api/cutting/models/", {"name": "من مجموعة القص",
+                                                    "category": 1},
+                           format="json").status_code in (201, 400)
+
+    def test_but_deleting_from_the_catalogue_still_needs_the_admin(
+        self, as_role, garment_model
+    ):
+        assert as_role("cutting").delete(
+            f"/api/cutting/models/{garment_model.pk}/"
+        ).status_code == 403
 
     @pytest.mark.parametrize("role,expected", [
         ("admin", 201), ("cutting_supervisor", 403), ("production_manager", 403),

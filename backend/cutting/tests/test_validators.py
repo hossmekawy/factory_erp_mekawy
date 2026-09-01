@@ -1,4 +1,7 @@
-"""V1 → V9 from SRS 5.5, checked on the backend.
+"""V2 → V10 from SRS 5.5, checked on the backend.
+
+V1 is gone: it needed a width on every roll and told the spreader nothing he
+was not already holding in his hands.
 
 Each test breaks exactly one rule on an otherwise closable lay, so a failure
 names the rule that regressed.
@@ -17,28 +20,6 @@ pytestmark = pytest.mark.django_db
 
 def codes(issues, level=None):
     return sorted(i.code for i in issues if level is None or i.level == level)
-
-
-class TestV1LayWidth:
-    def test_lay_wider_than_the_narrowest_roll_warns(self, make_lay):
-        lay = make_lay(lines=[
-            {"roll_length_m": "99.50", "plies": 20, "remnant_m": "0.50",
-             "width_cm": Decimal("160.00")},
-        ])
-        issues = validators.check_v1_lay_width(lay, list(lay.lines.all()))
-        assert codes(issues) == ["V1"]
-        assert issues[0].level == validators.WARNING  # a warning, never a block
-
-    def test_no_complaint_when_the_rolls_are_wide_enough(self, make_lay):
-        lay = make_lay(lines=[
-            {"roll_length_m": "99.50", "plies": 20, "remnant_m": "0.50",
-             "width_cm": Decimal("170.00")},
-        ])
-        assert validators.check_v1_lay_width(lay, list(lay.lines.all())) == []
-
-    def test_it_is_skipped_when_no_roll_width_was_entered(self, make_lay):
-        lay = make_lay()
-        assert validators.check_v1_lay_width(lay, list(lay.lines.all())) == []
 
 
 class TestV2Positives:

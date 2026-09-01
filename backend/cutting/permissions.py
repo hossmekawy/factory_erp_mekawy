@@ -2,20 +2,26 @@
 
 SRS section 3:
   cutting supervisor — the main user: enters, closes, counts, and may edit
-                       after closing with a mandatory reason.
+                       after closing with a mandatory reason. The `cutting`
+                       group is the same thing under the other name and has
+                       the same rights.
   production manager — reads everything, changes nothing.
   admin              — all of the above plus the catalogues (banks, models,
                        size sets, settings).
 
-The `cutting` group is the lowest role in ROLE_ORDER and is not one of the
-SRS's four. It is treated as read-only until someone says otherwise.
+`cutting` sits lowest in ROLE_ORDER, so a user in both it and
+`cutting_supervisor` resolves to the supervisor — which is the same set of
+rights either way.
 """
 from rest_framework.permissions import SAFE_METHODS, BasePermission
 
 from hr.permissions import role_of
 
 READ_ROLES = {"admin", "production_manager", "cutting_supervisor", "cutting"}
-WRITE_ROLES = {"admin", "cutting_supervisor"}
+# `cutting` is the group the real supervisor will be in, so it carries the same
+# rights as `cutting_supervisor`: enter, close, count, and correct the
+# catalogue. Deleting from the catalogue stays with the admin for both.
+WRITE_ROLES = {"admin", "cutting_supervisor", "cutting"}
 CATALOGUE_ROLES = {"admin"}
 
 

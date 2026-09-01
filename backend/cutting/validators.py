@@ -1,4 +1,9 @@
-"""V1 → V9 from SRS 5.5, checked on the backend and never only in the UI.
+"""V2 → V10 from SRS 5.5, checked on the backend and never only in the UI.
+
+V1 (lay width against the narrowest roll) is deliberately absent. It needed a
+width typed for every roll, and the spreader already knows the narrowest roll —
+he is holding it — so the rule could not tell him anything he did not know, in
+exchange for a field on every line. Removed with `LayLine.width_cm`.
 
 Two tiers:
 
@@ -44,24 +49,6 @@ def has_errors(issues) -> bool:
 
 
 # --- individual rules ----------------------------------------------------
-
-def check_v1_lay_width(lay, lines) -> list:
-    """Lay width cannot exceed the narrowest roll on the table."""
-    widths = [ln.width_cm for ln in lines if ln.width_cm is not None]
-    if not widths:
-        return []
-    narrowest = min(widths)
-    if lay.lay_width_cm > narrowest:
-        return [
-            Issue(
-                "V1",
-                WARNING,
-                f"عرض الفرشة ({lay.lay_width_cm}) أكبر من أضيق توب ({narrowest})",
-                field="lay_width_cm",
-            )
-        ]
-    return []
-
 
 def check_v2_line_positives(lines) -> list:
     """Plies and roll length must be positive. Also enforced by CheckConstraint."""
@@ -219,7 +206,6 @@ def validate_for_close(lay, settings=None) -> list:
     issues += check_v2_line_positives(lines)
     issues += check_v3_remnant(lay, lines)
     issues += check_v4_roll_arithmetic(lay, lines, settings.fabric_tolerance_pct)
-    issues += check_v1_lay_width(lay, lines)
     issues += check_v6_breakdown_total(lay, breakdown)
     issues += check_v7_team_leader_present(lay)
     issues += check_v8_shade_mix(lines)

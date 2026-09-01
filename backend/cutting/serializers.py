@@ -145,7 +145,7 @@ class LayLineSerializer(ModelCleanMixin, serializers.ModelSerializer):
         fields = [
             "id", "lay", "line_no", "roll_ref", "article", "lot_no", "roll_no",
             "barcode", "roll_length_m", "plies",
-            "remnant_m", "width_cm", "net_weight_kg", "shade_note",
+            "remnant_m", "shade_note",
             "roll_end_action", "roll_end_action_label", "remnant_disposition",
             "remnant_disposition_label", "has_splice", "is_aggregate", "notes",
         ]
@@ -356,7 +356,7 @@ class LaySerializer(ModelCleanMixin, serializers.ModelSerializer):
             "id", "code", "start_date", "end_date", "working_days", "is_multi_day",
             "bank", "bank_detail", "garment_model", "garment_model_detail",
             "size_set", "team_leader", "team_leader_detail", "team_members",
-            "entered_by", "entered_by_name", "lay_width_cm", "narrowest_width_cm",
+            "entered_by", "entered_by_name", "lay_width_cm",
             "lay_length_m", "pieces_per_ply", "entry_mode", "is_backfill",
             "sheet_image", "notes", "status", "status_label", "client_uuid",
             "lines", "size_breakdown", "output", "audit_entries",
