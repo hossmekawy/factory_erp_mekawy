@@ -119,11 +119,20 @@ class BankViewSet(ServiceErrorMixin, viewsets.ModelViewSet):
 
 
 class SizeSetViewSet(ServiceErrorMixin, viewsets.ModelViewSet):
-    queryset = SizeSet.objects.all()
+    """Size sets. `?is_preset=true` is the list worth offering anyone — the
+    rest are snapshots left behind by lays whose sizes were typed by hand."""
+
+    queryset = SizeSet.objects.select_related("category")
     serializer_class = SizeSetSerializer
-    permission_classes = [CanManageCatalogue]
-    filterset_fields = ["is_active", "total_pieces"]
+    permission_classes = [CanAddToCatalogue]
+    filterset_fields = ["is_active", "total_pieces", "is_preset", "category"]
     search_fields = ["name", "sizes_raw"]
+    ordering_fields = ["name", "total_pieces", "created_at"]
+    ordering = ["name"]
+
+    def perform_create(self, serializer):
+        # Anything created through this endpoint was created on purpose.
+        serializer.save(is_preset=True)
 
     @action(detail=False, methods=["post"], permission_classes=[CanViewCutting])
     def parse(self, request):

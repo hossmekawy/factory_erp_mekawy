@@ -36,6 +36,16 @@ export type CrudConfig<T> = {
   emptyText: string;
 };
 
+/** "/api/x/?flag=1&" -> "/api/x/" — the collection without its list filter. */
+function baseUrl(endpoint: string): string {
+  return endpoint.split("?")[0];
+}
+
+/** The detail URL for one row, ignoring any list filter on the endpoint. */
+function itemUrl(endpoint: string, id: number): string {
+  return `${baseUrl(endpoint)}${id}/`;
+}
+
 export default function CrudPage<T extends { id: number }>({
   config,
   canDelete,
@@ -51,7 +61,9 @@ export default function CrudPage<T extends { id: number }>({
 
   const load = useCallback(() => {
     setLoading(true);
-    api(`${config.endpoint}?search=${encodeURIComponent(q)}&page_size=200`)
+    // The endpoint may already carry a filter (it ends with "&" when it does).
+    const join = config.endpoint.includes("?") ? "" : "?";
+    api(`${config.endpoint}${join}search=${encodeURIComponent(q)}&page_size=200`)
       .then((d) => setRows(d.results ?? d))
       .catch((e) => setError(errorText(e)))
       .finally(() => setLoading(false));
@@ -71,7 +83,7 @@ export default function CrudPage<T extends { id: number }>({
     if (!confirm("متأكد إنك عايز تمسحه؟")) return;
     setError("");
     try {
-      await api(`${config.endpoint}${row.id}/`, { method: "DELETE" });
+      await api(`${itemUrl(config.endpoint, row.id)}`, { method: "DELETE" });
       load();
     } catch (e) {
       const found = issuesOf((e as ApiError).data);
@@ -202,7 +214,7 @@ function EditDialog<T extends { id: number }>({
     setError("");
     setFieldErrors({});
     try {
-      await api(row ? `${config.endpoint}${row.id}/` : config.endpoint, {
+      await api(row ? itemUrl(config.endpoint, row.id) : baseUrl(config.endpoint), {
         method: row ? "PATCH" : "POST",
         body: JSON.stringify(
           Object.fromEntries(

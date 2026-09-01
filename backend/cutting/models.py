@@ -52,6 +52,18 @@ class SizeSet(models.Model):
     name = models.CharField(max_length=100, verbose_name="اسم الطقم")
     sizes_raw = models.CharField(max_length=200, verbose_name="المقاسات")
     total_pieces = models.PositiveIntegerField(default=0, verbose_name="عدد القطع في الراق")
+    category = models.ForeignKey(
+        "Category",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="size_sets",
+        verbose_name="القسم",
+    )
+    # A preset is one somebody saved on purpose to reuse. Entering sizes by
+    # hand on a lay also lands a SizeSet row — that is how the breakdown gets
+    # its snapshot — and those must not clutter the picker or the catalogue.
+    is_preset = models.BooleanField(default=False, verbose_name="طقم محفوظ")
     is_active = models.BooleanField(default=True, verbose_name="نشط")
     created_at = models.DateTimeField(auto_now_add=True)
 
@@ -59,6 +71,7 @@ class SizeSet(models.Model):
         verbose_name = "طقم مقاسات"
         verbose_name_plural = "أطقم المقاسات"
         ordering = ["name"]
+        indexes = [models.Index(fields=["is_preset", "category"], name="sizeset_preset_idx")]
 
     def __str__(self):
         return f"{self.name} ({self.sizes_raw})"

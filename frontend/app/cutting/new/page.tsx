@@ -37,8 +37,21 @@ import {
 } from "@/lib/cutting";
 
 type Bank = { id: number; code: string; name: string };
-type GarmentModel = { id: number; code: string; name: string; category_label: string };
+type GarmentModel = {
+  id: number;
+  code: string;
+  name: string;
+  category: number | null;
+  category_label: string;
+};
 type Category = { id: number; name: string };
+type SizePreset = {
+  id: number;
+  name: string;
+  sizes_raw: string;
+  total_pieces: number;
+  category: number | null;
+};
 type TeamLeader = {
   id: number;
   employee_code: string;
@@ -66,6 +79,7 @@ export default function NewLayPage() {
   const [addingModel, setAddingModel] = useState(false);
   const [newModelCategory, setNewModelCategory] = useState<number | "">("");
   const [categories, setCategories] = useState<Category[]>([]);
+  const [presets, setPresets] = useState<SizePreset[]>([]);
   // Sizes are kept as an ordered list of tokens, not one typed string. The
   // phone's numeric keypad has no space bar, so they cannot be typed as
   // "30 32 32" on the device this screen exists for; they go in one at a time.
@@ -137,6 +151,9 @@ export default function NewLayPage() {
     api("/api/cutting/categories/?page_size=200")
       .then((d) => setCategories(d.results ?? d))
       .catch(() => {});
+    api("/api/cutting/size-sets/?is_preset=true&is_active=true&page_size=200")
+      .then((d) => setPresets(d.results ?? d))
+      .catch(() => {});
     api("/api/cutting/settings/1/")
       .then((d) => {
         if (d.default_bank) setBankId((v) => (v === "" ? d.default_bank : v));
@@ -200,6 +217,24 @@ export default function NewLayPage() {
     }, 300);
     return () => clearTimeout(t);
   }, [sizesRaw]);
+
+  // Presets for the model's own section first — those are the ones he wants.
+  const orderedPresets = useMemo(() => {
+    const mine = model?.category ?? null;
+    return [...presets].sort((a, b) => {
+      const rank = (p: SizePreset) =>
+        mine !== null && p.category === mine ? 0 : p.category === null ? 1 : 2;
+      return rank(a) - rank(b) || a.name.localeCompare(b.name, "ar");
+    });
+  }, [presets, model]);
+
+  const applyPreset = (preset: SizePreset) => {
+    // Replaces rather than appends: a preset is the whole run, and it stays
+    // editable afterwards — add a size, drop a chip, whatever the page needs.
+    setSizeTokens(splitSizes(preset.sizes_raw));
+    setSizeEntry("");
+    sizeInputRef.current?.focus();
+  };
 
   const addSizes = (text: string) => {
     const parsed = splitSizes(text);
@@ -604,6 +639,27 @@ export default function NewLayPage() {
                 أضف
               </button>
             </div>
+
+            {orderedPresets.length > 0 && (
+              <div className="mt-2 flex flex-wrap gap-1.5">
+                {orderedPresets.map((p) => (
+                  <button
+                    key={p.id}
+                    type="button"
+                    data-testid="size-preset"
+                    data-preset={p.name}
+                    onPointerDown={(e) => e.preventDefault()}
+                    onClick={() => applyPreset(p)}
+                    className="rounded-full bg-slate-100 px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-red-50 hover:text-red-700"
+                  >
+                    {p.name}
+                    <span dir="ltr" className="mr-1.5 font-normal text-slate-400">
+                      {p.sizes_raw}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            )}
 
             {sizesError && <p className="mt-1 text-sm text-rose-600">{sizesError}</p>}
 

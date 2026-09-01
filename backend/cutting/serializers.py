@@ -66,9 +66,13 @@ class BankSerializer(serializers.ModelSerializer):
 class SizeSetSerializer(ModelCleanMixin, serializers.ModelSerializer):
     parsed = serializers.SerializerMethodField()
 
+    category_label = serializers.CharField(source="category.name", read_only=True,
+                                           default="")
+
     class Meta:
         model = SizeSet
-        fields = ["id", "name", "sizes_raw", "total_pieces", "parsed", "is_active", "created_at"]
+        fields = ["id", "name", "sizes_raw", "total_pieces", "parsed", "category",
+                  "category_label", "is_preset", "is_active", "created_at"]
         read_only_fields = ["total_pieces"]  # always derived from sizes_raw
 
     def get_parsed(self, obj):
@@ -404,8 +408,10 @@ class LaySerializer(ModelCleanMixin, serializers.ModelSerializer):
                 }
             )
         canonical = size_utils.format_sizes(pairs)
+        # is_preset stays False: this row exists only so the lay has a
+        # breakdown to snapshot from, not as something to offer next time.
         size_set, _created = SizeSet.objects.get_or_create(
-            sizes_raw=canonical, defaults={"name": canonical}
+            sizes_raw=canonical, is_preset=False, defaults={"name": canonical}
         )
         return size_set
 

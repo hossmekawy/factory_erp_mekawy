@@ -16,6 +16,7 @@ import {
   Layers,
   LogOut,
   Menu,
+  Ruler,
   Layers3,
   Settings as SettingsIcon,
   Scissors,
@@ -71,6 +72,7 @@ const NAV_GROUPS: NavGroup[] = [
       // entered with the lay itself now.
       { href: "/cutting/models", label: "الموديلات", Icon: Shirt, roles: CUTTING_ROLES },
       { href: "/cutting/categories", label: "الأقسام", Icon: Layers3, roles: CUTTING_ROLES },
+      { href: "/cutting/size-sets", label: "أطقم المقاسات", Icon: Ruler, roles: CUTTING_ROLES },
       { href: "/cutting/remnants", label: "سجل البواقي", Icon: Scissors, roles: CUTTING_ROLES },
       { href: "/cutting/reports", label: "تقارير القص", Icon: BarChart3, roles: CUTTING_ROLES },
     ],

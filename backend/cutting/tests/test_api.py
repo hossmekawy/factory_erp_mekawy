@@ -905,3 +905,77 @@ class TestTicketFieldsAreGone:
         """That one really does get taken, once per lay."""
         lay = make_lay()
         assert supervisor.get(f"/api/cutting/lays/{lay.pk}/").data["sheet_image"]
+
+
+class TestSizePresets:
+    """Saved size runs (user request): buttons on the new-lay screen, managed
+    from their own page, sorted so the model's own section comes first."""
+
+    def test_a_set_made_through_the_api_is_a_preset(self, as_role, category):
+        res = as_role("admin").post("/api/cutting/size-sets/", {
+            "name": "رجالي عادي", "sizes_raw": "30 32 34 36 38",
+            "category": category.pk,
+        }, format="json")
+        assert res.status_code == 201
+        assert res.data["is_preset"] is True
+        assert res.data["total_pieces"] == 5          # derived, not sent
+        assert res.data["category_label"] == category.name
+
+    def test_sizes_typed_on_a_lay_do_not_become_a_preset(
+        self, supervisor, bank, garment_model, leader
+    ):
+        """Otherwise every one-off run would show up as a button next time."""
+        supervisor.post("/api/cutting/lays/", {
+            "code": "P100", "start_date": TODAY.isoformat(), "bank": bank.pk,
+            "garment_model": garment_model.pk, "team_leader": leader.pk,
+            "lay_width_cm": "167", "lay_length_m": "4.95",
+            "sizes_raw": "44 46 48",
+        }, format="json")
+        presets = supervisor.get("/api/cutting/size-sets/?is_preset=true").data
+        assert "44 46 48" not in [p["sizes_raw"] for p in presets["results"]]
+        # but the set itself exists, because the breakdown snapshots from it
+        assert supervisor.get("/api/cutting/size-sets/").data["count"] >= 1
+
+    def test_presets_can_be_filtered_by_section(self, as_role, category):
+        client = as_role("admin")
+        client.post("/api/cutting/size-sets/",
+                    {"name": "للقسم", "sizes_raw": "30 32", "category": category.pk},
+                    format="json")
+        client.post("/api/cutting/size-sets/",
+                    {"name": "عام", "sizes_raw": "34 36"}, format="json")
+        only = client.get(f"/api/cutting/size-sets/?is_preset=true&category={category.pk}")
+        assert [p["name"] for p in only.data["results"]] == ["للقسم"]
+
+    def test_a_preset_without_a_section_is_general(self, as_role):
+        res = as_role("admin").post("/api/cutting/size-sets/",
+                                    {"name": "عام", "sizes_raw": "30 32"}, format="json")
+        assert res.status_code == 201
+        assert res.data["category"] is None
+        assert res.data["category_label"] == ""
+
+    def test_it_parses_the_sizes_for_the_screen(self, as_role):
+        res = as_role("admin").post("/api/cutting/size-sets/",
+                                    {"name": "مكرر", "sizes_raw": "30 32 32 34"},
+                                    format="json")
+        assert res.data["total_pieces"] == 4
+        assert res.data["parsed"] == [
+            {"size": "30", "pieces_in_ply": 1},
+            {"size": "32", "pieces_in_ply": 2},
+            {"size": "34", "pieces_in_ply": 1},
+        ]
+
+    def test_the_supervisor_may_add_and_correct_but_not_delete(self, as_role):
+        client = as_role("cutting_supervisor")
+        made = client.post("/api/cutting/size-sets/",
+                           {"name": "بتاعي", "sizes_raw": "30 32"}, format="json")
+        assert made.status_code == 201
+        assert client.patch(f"/api/cutting/size-sets/{made.data['id']}/",
+                            {"name": "اتعدل"}, format="json").status_code == 200
+        assert client.delete(
+            f"/api/cutting/size-sets/{made.data['id']}/"
+        ).status_code == 403
+
+    def test_a_read_only_role_can_see_them(self, as_role):
+        assert as_role("production_manager").get(
+            "/api/cutting/size-sets/?is_preset=true"
+        ).status_code == 200

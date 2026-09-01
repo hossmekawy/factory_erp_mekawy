@@ -162,7 +162,8 @@ await go("/cutting");
 await page.locator("tbody tr").first().click();
 await page.waitForURL(/\/cutting\/\d+$/, { timeout: 15000 });
 await page.waitForTimeout(900);
-for (const heading of ["المقاسات", "سطور الأتواب", "الاستهلاك والعجز", "المرجع", "سجل النشاط"]) {
+for (const heading of ["المقاسات", "سطور الأتواب", "الاستهلاك والعجز",
+                       "صورة ورقة الدفتر", "سجل النشاط"]) {
   check(`section "${heading}"`, await page.getByText(heading, { exact: true }).first().isVisible());
 }
 check("the six numbers are there", (await page.getByText("الميتراج الحقيقي").count()) > 0);
