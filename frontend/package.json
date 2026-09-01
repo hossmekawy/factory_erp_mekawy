@@ -6,7 +6,8 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start -p 3002",
-    "lint": "eslint"
+    "lint": "eslint",
+    "test:ui": "node tests/ui/new-lay.mjs && node tests/ui/sizes-entry.mjs && node tests/ui/lay-list.mjs && node tests/ui/counting.mjs && node tests/ui/catalogues.mjs && node tests/ui/reports.mjs"
   },
   "dependencies": {
     "lucide-react": "^1.24.0",
@@ -21,6 +22,7 @@
     "@types/react-dom": "^19",
     "eslint": "^9",
     "eslint-config-next": "16.2.10",
+    "playwright": "^1.62.1",
     "tailwindcss": "^4",
     "typescript": "^5"
   }
