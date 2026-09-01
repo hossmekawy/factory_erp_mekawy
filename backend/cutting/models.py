@@ -81,6 +81,28 @@ class SizeSet(models.Model):
         super().save(*args, **kwargs)
 
 
+class Fit(models.Model):
+    """The cut of a garment — سليم / واسع / بوت كت.
+
+    A catalogue rather than free text on GarmentModel: the same cut is typed
+    on dozens of models, and a typo in one of them splits the reports. Renaming
+    it here corrects every model at once.
+    """
+
+    name = models.CharField(max_length=50, unique=True, verbose_name="القَصّة")
+    notes = models.CharField(max_length=200, blank=True, verbose_name="ملاحظات")
+    is_active = models.BooleanField(default=True, verbose_name="نشط")
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = "قَصّة"
+        verbose_name_plural = "القَصّات"
+        ordering = ["name"]
+
+    def __str__(self):
+        return self.name
+
+
 class GarmentModel(models.Model):
     """Catalogue of garment models.
 
@@ -99,7 +121,14 @@ class GarmentModel(models.Model):
     category = models.CharField(
         max_length=10, choices=CATEGORY_CHOICES, blank=True, verbose_name="الفئة"
     )
-    fit = models.CharField(max_length=50, blank=True, verbose_name="القَصّة")
+    fit = models.ForeignKey(
+        Fit,
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="models",
+        verbose_name="القَصّة",
+    )
     default_size_set = models.ForeignKey(
         SizeSet,
         on_delete=models.SET_NULL,
@@ -137,6 +166,26 @@ class CuttingSettings(models.Model):
         max_digits=6, decimal_places=2, default=Decimal("1.00"), verbose_name="حد الباقي الهالك (م)"
     )
     notify_emails = models.TextField(blank=True, verbose_name="إيميلات التنبيهات")
+
+    # Preselected on the new-lay screen. Almost every lay runs on the same bank
+    # with the same team leader, so making them a stored default saves two
+    # taps per lay; the supervisor can still change either one.
+    default_bank = models.ForeignKey(
+        "Bank",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="+",
+        verbose_name="البنك الافتراضي",
+    )
+    default_team_leader = models.ForeignKey(
+        Employee,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="+",
+        verbose_name="رئيس الفريق الافتراضي",
+    )
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:

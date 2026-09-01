@@ -58,20 +58,23 @@ class CanManageCatalogue(CanViewCutting):
 
 
 class CanAddToCatalogue(CanViewCutting):
-    """Same, but the supervisor may also *create*.
+    """Read for the module, add and correct for the supervisor, delete for the
+    admin.
 
-    SRS 3 puts catalogue management with the admin, while SRS 7.2 gives the
-    new-lay screen a "quick add" for a model the supervisor is holding in his
-    hand right now. Both hold if he can add but not rewrite: a wrong new row
-    is a nuisance, a rewritten one silently changes closed lays.
+    SRS 3 puts catalogue management with the admin, while 7.2 lets the
+    supervisor add a model from the new-lay screen. Once he can add one he can
+    also mistype one, and refusing to let him fix his own typo just leaves the
+    wrong name in every report — so editing is his too. Deleting is not: it is
+    the one action that cannot be walked back, and a model that is actually in
+    use is protected by the database anyway.
     """
 
-    message = "تعديل الكتالوج للأدمن بس — تقدر تضيف جديد بس"
+    message = "حذف الكتالوج للأدمن بس"
 
     def has_permission(self, request, view):
         role = _role(request)
         if request.method in SAFE_METHODS:
             return role in READ_ROLES
-        if request.method == "POST":
-            return role in WRITE_ROLES
-        return role in CATALOGUE_ROLES
+        if request.method == "DELETE":
+            return role in CATALOGUE_ROLES
+        return role in WRITE_ROLES

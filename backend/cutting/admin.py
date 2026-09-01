@@ -2,6 +2,7 @@ from django.contrib import admin
 
 from .models import (
     Bank,
+    Fit,
     CuttingSettings,
     GarmentModel,
     Lay,
@@ -27,10 +28,16 @@ class SizeSetAdmin(admin.ModelAdmin):
     readonly_fields = ["total_pieces"]
 
 
+@admin.register(Fit)
+class FitAdmin(admin.ModelAdmin):
+    list_display = ["name", "is_active"]
+    search_fields = ["name"]
+
+
 @admin.register(GarmentModel)
 class GarmentModelAdmin(admin.ModelAdmin):
     list_display = ["code", "name", "category", "fit", "is_active"]
-    search_fields = ["code", "name", "fit"]
+    search_fields = ["code", "name", "fit__name"]
     list_filter = ["category", "is_active"]
 
 

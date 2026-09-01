@@ -16,7 +16,15 @@ from django.utils import timezone
 from devices.models import AttendanceLog, Device
 from hr.models import Employee
 
-from cutting.models import Bank, CuttingSettings, GarmentModel, Lay, LayLine, SizeSet
+from cutting.models import (
+    Bank,
+    CuttingSettings,
+    Fit,
+    GarmentModel,
+    Lay,
+    LayLine,
+    SizeSet,
+)
 
 TODAY = datetime.date(2026, 8, 20)
 
@@ -60,9 +68,14 @@ def size_set(db):
 
 
 @pytest.fixture
-def garment_model(db, size_set):
+def fit(db):
+    return Fit.objects.create(name="سليم")
+
+
+@pytest.fixture
+def garment_model(db, size_set, fit):
     return GarmentModel.objects.create(
-        code="1749", name="karl", category="men", fit="سليم", default_size_set=size_set
+        code="1749", name="karl", category="men", fit=fit, default_size_set=size_set
     )
 
 
@@ -154,13 +167,20 @@ def api():
 
 @pytest.fixture
 def make_user(db):
+    """A user per role. Asking twice for the same role gives the same person —
+    a test that acts as the admin in two steps is still one admin."""
     from django.contrib.auth.models import Group
 
+    made = {}
+
     def _make(role):
-        u = User.objects.create_user(username=f"u_{role or 'none'}", password="pw")
-        if role:
-            u.groups.add(Group.objects.get_or_create(name=role)[0])
-        return u
+        key = role or "none"
+        if key not in made:
+            user = User.objects.create_user(username=f"u_{key}", password="pw")
+            if role:
+                user.groups.add(Group.objects.get_or_create(name=role)[0])
+            made[key] = user
+        return made[key]
 
     return _make
 

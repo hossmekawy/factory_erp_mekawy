@@ -35,7 +35,7 @@ import {
 } from "@/lib/cutting";
 
 type Bank = { id: number; code: string; name: string };
-type GarmentModel = { id: number; code: string; name: string; fit: string };
+type GarmentModel = { id: number; code: string; name: string; fit_name: string };
 type TeamLeader = {
   id: number;
   employee_code: string;
@@ -107,9 +107,20 @@ export default function NewLayPage() {
 
   // --- lookups ----------------------------------------------------------
 
+  // Almost every lay runs on the same bank with the same team leader, so both
+  // are preselected from the stored defaults. Nothing is locked — changing
+  // either one is a single tap, and the next lay starts from the default again
+  // until the default itself is changed in Settings.
   useEffect(() => {
     api("/api/cutting/banks/?is_active=true")
       .then((d) => setBanks(d.results ?? d))
+      .catch(() => {});
+    api("/api/cutting/settings/1/")
+      .then((d) => {
+        if (d.default_bank) setBankId((v) => (v === "" ? d.default_bank : v));
+        if (d.default_team_leader)
+          setLeaderId((v) => (v === "" ? d.default_team_leader : v));
+      })
       .catch(() => {});
   }, []);
 
@@ -405,7 +416,7 @@ export default function NewLayPage() {
                   <bdi>{model.code}</bdi>
                   <span className="mr-2 text-sm font-normal text-slate-500">
                     <bdi>{model.name}</bdi>
-                    {model.fit && <> · {model.fit}</>}
+                    {model.fit_name && <> · {model.fit_name}</>}
                   </span>
                 </span>
                 <button
@@ -439,7 +450,7 @@ export default function NewLayPage() {
                         <bdi className="font-semibold">{m.code}</bdi>{" "}
                         <span className="text-sm text-slate-500">
                           <bdi>{m.name}</bdi>
-                          {m.fit && <> · {m.fit}</>}
+                          {m.fit_name && <> · {m.fit_name}</>}
                         </span>
                       </button>
                     ))}

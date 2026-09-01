@@ -14,6 +14,7 @@ from . import exceptions, services
 from . import sizes as size_utils
 from .models import (
     Bank,
+    Fit,
     CuttingSettings,
     GarmentModel,
     Lay,
@@ -75,16 +76,26 @@ class SizeSetSerializer(ModelCleanMixin, serializers.ModelSerializer):
             return []
 
 
+class FitSerializer(serializers.ModelSerializer):
+    model_count = serializers.IntegerField(read_only=True)
+
+    class Meta:
+        model = Fit
+        fields = ["id", "name", "notes", "is_active", "model_count", "created_at"]
+
+
 class GarmentModelSerializer(serializers.ModelSerializer):
     default_size_set_detail = SizeSetSerializer(source="default_size_set", read_only=True)
     category_label = serializers.CharField(source="get_category_display", read_only=True)
+    fit_name = serializers.CharField(source="fit.name", read_only=True, default="")
+    lay_count = serializers.IntegerField(read_only=True)
 
     class Meta:
         model = GarmentModel
         fields = [
-            "id", "code", "name", "category", "category_label", "fit",
+            "id", "code", "name", "category", "category_label", "fit", "fit_name",
             "default_size_set", "default_size_set_detail", "image", "notes",
-            "is_active", "created_at",
+            "is_active", "lay_count", "created_at",
         ]
 
 
@@ -93,7 +104,8 @@ class CuttingSettingsSerializer(serializers.ModelSerializer):
         model = CuttingSettings
         fields = [
             "id", "fabric_tolerance_pct", "pieces_tolerance_pct",
-            "remnant_waste_threshold_m", "notify_emails", "updated_at",
+            "remnant_waste_threshold_m", "notify_emails",
+            "default_bank", "default_team_leader", "updated_at",
         ]
 
 
@@ -241,7 +253,8 @@ class LayListSerializer(serializers.ModelSerializer):
 
     garment_model_code = serializers.CharField(source="garment_model.code", read_only=True)
     garment_model_name = serializers.CharField(source="garment_model.name", read_only=True)
-    fit = serializers.CharField(source="garment_model.fit", read_only=True)
+    fit = serializers.CharField(source="garment_model.fit.name", read_only=True,
+                                default="")
     bank_name = serializers.CharField(source="bank.name", read_only=True)
     team_leader_name = serializers.CharField(source="team_leader.full_name", read_only=True)
     sizes_summary = serializers.SerializerMethodField()

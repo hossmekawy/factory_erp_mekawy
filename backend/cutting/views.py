@@ -10,6 +10,7 @@ Failures come back in one shape, carrying the SRS rule number — see
 import datetime
 
 from django.core.exceptions import ValidationError as DjangoValidationError
+from django.db.models import ProtectedError
 from django.db import models
 from django.db.models import Avg, Count, Prefetch, Sum
 from rest_framework import status, viewsets
@@ -26,6 +27,7 @@ from . import validators
 from .models import (
     Bank,
     CuttingSettings,
+    Fit,
     GarmentModel,
     Lay,
     LayLine,
@@ -43,6 +45,7 @@ from .serializers import (
     BankSerializer,
     CloseLaySerializer,
     CuttingSettingsSerializer,
+    FitSerializer,
     GarmentModelSerializer,
     LayLineSerializer,
     LayListSerializer,
@@ -59,6 +62,20 @@ class ServiceErrorMixin:
     """Translate service and model failures into the shared error shape."""
 
     def handle_exception(self, exc):
+        if isinstance(exc, ProtectedError):
+            # A catalogue row a lay still points at. The database is right to
+            # refuse; the client deserves to be told why rather than given a 500.
+            return Response(
+                {
+                    "detail": "مينفعش يتمسح — فيه فرشات مرتبطة بيه",
+                    "issues": [{
+                        "code": "in_use", "level": "error",
+                        "message": "مينفعش يتمسح — فيه فرشات أو موديلات مرتبطة بيه",
+                        "field": None, "line_no": None,
+                    }],
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
         if isinstance(exc, services.LayValidationError):
             return Response(
                 exceptions.issues_payload(exc.issues, "الفرشة مش جاهزة للعملية دي"),
@@ -131,16 +148,37 @@ class SizeSetViewSet(ServiceErrorMixin, viewsets.ModelViewSet):
         })
 
 
-class GarmentModelViewSet(ServiceErrorMixin, viewsets.ModelViewSet):
-    """The supervisor may add a model from the new-lay screen (SRS 7.2) but
-    only the admin may change or remove one."""
+class FitViewSet(ServiceErrorMixin, viewsets.ModelViewSet):
+    """The cut catalogue. Renaming one here renames it on every model at once,
+    which is the whole reason it stopped being free text."""
 
-    queryset = GarmentModel.objects.select_related("default_size_set")
+    serializer_class = FitSerializer
+    permission_classes = [CanAddToCatalogue]
+    filterset_fields = ["is_active"]
+    search_fields = ["name", "notes"]
+    ordering_fields = ["name", "created_at"]
+    # Annotating drops the model's Meta ordering, and an unordered queryset
+    # paginates inconsistently.
+    ordering = ["name"]
+
+    def get_queryset(self):
+        return Fit.objects.annotate(model_count=Count("models", distinct=True))
+
+
+class GarmentModelViewSet(ServiceErrorMixin, viewsets.ModelViewSet):
+    """The supervisor may add and correct a model; only the admin deletes one."""
+
     serializer_class = GarmentModelSerializer
     permission_classes = [CanAddToCatalogue]
+
+    def get_queryset(self):
+        return GarmentModel.objects.select_related(
+            "default_size_set", "fit"
+        ).annotate(lay_count=Count("lays", distinct=True))
     filterset_fields = ["category", "fit", "is_active"]
-    search_fields = ["code", "name", "fit"]
+    search_fields = ["code", "name", "fit__name"]
     ordering_fields = ["code", "name", "created_at"]
+    ordering = ["code"]
 
 
 class CuttingSettingsViewSet(ServiceErrorMixin, viewsets.ModelViewSet):
@@ -158,7 +196,7 @@ class LayViewSet(ServiceErrorMixin, viewsets.ModelViewSet):
     permission_classes = [CanEditLays]
     filterset_class = filters.LayFilter
     search_fields = [
-        "garment_model__code", "garment_model__name", "garment_model__fit",
+        "garment_model__code", "garment_model__name", "garment_model__fit__name",
         "team_leader__full_name", "notes",
         "lines__article", "lines__shade_note", "lines__lot_no", "lines__roll_no",
     ]

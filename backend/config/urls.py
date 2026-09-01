@@ -23,7 +23,8 @@ cutting_router.register("banks", cutting_views.BankViewSet)
 cutting_router.register("size-sets", cutting_views.SizeSetViewSet)
 # The endpoint keeps the SRS name; the class is GarmentModel because `Model`
 # would shadow django.db.models.Model.
-cutting_router.register("models", cutting_views.GarmentModelViewSet)
+cutting_router.register("models", cutting_views.GarmentModelViewSet, basename="model")
+cutting_router.register("fits", cutting_views.FitViewSet, basename="fit")
 cutting_router.register("lays", cutting_views.LayViewSet, basename="lay")
 cutting_router.register("lay-lines", cutting_views.LayLineViewSet)
 cutting_router.register("remnants", cutting_views.RemnantLogViewSet)

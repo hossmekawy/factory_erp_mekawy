@@ -76,14 +76,18 @@ class TestPermissions:
         )
         assert res.status_code == 201
 
-    def test_but_he_may_not_rewrite_one(self, as_role, garment_model):
-        """A wrong new row is a nuisance; a rewritten one changes closed lays."""
+    def test_and_may_correct_one_he_mistyped(self, as_role, garment_model):
+        """He can add a model, so he can mistype one. Refusing the fix just
+        leaves the wrong name in every report."""
         res = as_role("cutting_supervisor").patch(
             f"/api/cutting/models/{garment_model.pk}/", {"name": "تاني"}, format="json"
         )
-        assert res.status_code == 403
+        assert res.status_code == 200
+        garment_model.refresh_from_db()
+        assert garment_model.name == "تاني"
 
-    def test_nor_delete_one(self, as_role, garment_model):
+    def test_but_he_may_not_delete_one(self, as_role, garment_model):
+        """The one action that cannot be walked back stays with the admin."""
         res = as_role("cutting_supervisor").delete(f"/api/cutting/models/{garment_model.pk}/")
         assert res.status_code == 403
 
@@ -577,3 +581,112 @@ class TestCountingWorklist:
 
         res = supervisor.get("/api/cutting/lays/?awaiting_count=true")
         assert {r["id"] for r in res.data["results"]} == {waiting.pk}
+
+
+class TestFitCatalogue:
+    """القَصّات as a catalogue rather than free text (user request, SRS 4.4)."""
+
+    def test_admin_creates_a_fit(self, as_role):
+        res = as_role("admin").post("/api/cutting/fits/", {"name": "بوت كت"}, format="json")
+        assert res.status_code == 201
+
+    def test_the_supervisor_may_add_and_correct_but_not_delete(self, as_role, fit):
+        client = as_role("cutting_supervisor")
+        assert client.post("/api/cutting/fits/", {"name": "واسع"},
+                           format="json").status_code == 201
+        assert client.patch(f"/api/cutting/fits/{fit.pk}/", {"name": "سليم جدًا"},
+                            format="json").status_code == 200
+        assert client.delete(f"/api/cutting/fits/{fit.pk}/").status_code == 403
+
+    def test_a_read_only_role_cannot_touch_it(self, as_role, fit):
+        client = as_role("production_manager")
+        assert client.get("/api/cutting/fits/").status_code == 200
+        assert client.post("/api/cutting/fits/", {"name": "x"},
+                           format="json").status_code == 403
+
+    def test_the_name_is_unique(self, as_role, fit):
+        res = as_role("admin").post("/api/cutting/fits/", {"name": fit.name}, format="json")
+        assert res.status_code == 400
+
+    def test_renaming_a_fit_renames_it_on_every_model(self, as_role, fit, garment_model):
+        """The whole point of the catalogue."""
+        as_role("admin").patch(f"/api/cutting/fits/{fit.pk}/", {"name": "سليم ٢"},
+                               format="json")
+        res = as_role("admin").get(f"/api/cutting/models/{garment_model.pk}/")
+        assert res.data["fit_name"] == "سليم ٢"
+
+    def test_a_fit_in_use_is_refused_in_arabic(self, as_role, fit, garment_model):
+        """PROTECT on the FK — deleting it would orphan the models."""
+        res = as_role("admin").delete(f"/api/cutting/fits/{fit.pk}/")
+        assert res.status_code == 400
+        assert res.data["issues"][0]["code"] == "in_use"
+
+    def test_it_counts_how_many_models_use_it(self, as_role, fit, garment_model):
+        res = as_role("admin").get("/api/cutting/fits/")
+        assert res.data["results"][0]["model_count"] == 1
+
+    def test_lays_can_be_filtered_by_fit_name(self, supervisor, make_lay):
+        make_lay()
+        assert supervisor.get("/api/cutting/lays/?fit=سليم").data["count"] == 1
+        assert supervisor.get("/api/cutting/lays/?fit=واسع").data["count"] == 0
+
+    def test_the_shorthand_token_still_works(self, supervisor, make_lay):
+        make_lay()
+        res = supervisor.get("/api/cutting/lays/search/?q=" + "قصة:سليم")
+        assert res.data["count"] == 1
+
+
+class TestModelCatalogue:
+    def test_a_duplicate_code_is_refused(self, as_role, garment_model):
+        res = as_role("admin").post(
+            "/api/cutting/models/", {"code": garment_model.code, "name": "تاني"},
+            format="json",
+        )
+        assert res.status_code == 400
+
+    def test_it_reports_how_many_lays_use_each_model(self, as_role, make_lay, garment_model):
+        make_lay()
+        res = as_role("admin").get("/api/cutting/models/")
+        row = next(r for r in res.data["results"] if r["id"] == garment_model.pk)
+        assert row["lay_count"] == 1
+
+    def test_a_model_in_use_is_refused_in_arabic_not_a_500(
+        self, as_role, make_lay, garment_model
+    ):
+        make_lay()
+        res = as_role("admin").delete(f"/api/cutting/models/{garment_model.pk}/")
+        assert res.status_code == 400
+        assert res.data["issues"][0]["code"] == "in_use"
+        assert "فرشات" in res.data["detail"]
+
+    def test_an_unused_model_can_be_deleted(self, as_role):
+        created = as_role("admin").post(
+            "/api/cutting/models/", {"code": "9999", "name": "مؤقت"}, format="json"
+        ).data
+        assert as_role("admin").delete(
+            f"/api/cutting/models/{created['id']}/"
+        ).status_code == 204
+
+
+class TestNewLayDefaults:
+    """Almost every lay is the same bank and the same team leader, so the
+    screen preselects them (user request)."""
+
+    def test_the_settings_carry_the_defaults(self, as_role, bank, leader):
+        client = as_role("admin")
+        res = client.patch("/api/cutting/settings/1/", {
+            "default_bank": bank.pk, "default_team_leader": leader.pk,
+        }, format="json")
+        assert res.status_code == 200
+        assert res.data["default_bank"] == bank.pk
+        assert res.data["default_team_leader"] == leader.pk
+
+    def test_they_start_empty(self, as_role):
+        res = as_role("admin").get("/api/cutting/settings/1/")
+        assert res.data["default_bank"] is None
+        assert res.data["default_team_leader"] is None
+
+    def test_a_read_only_role_can_read_them(self, as_role):
+        assert as_role("production_manager").get(
+            "/api/cutting/settings/1/"
+        ).status_code == 200
