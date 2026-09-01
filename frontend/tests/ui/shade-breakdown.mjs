@@ -82,17 +82,14 @@ check("shares are 66.7 / 33.3", /66\.7%/.test(got["أسود"] ?? "") && /33\.3%/
 check("pieces follow the ply count", /40 قطعة/.test(got["أسود"] ?? ""), got["أسود"]);
 
 // ---------------------------------------------------------------- 2
-console.log("\n2. a splice comes off its own shade so the total still matches");
-await t("roll-end-splice").nth(0).click();
-await page.waitForTimeout(700);
-const spliced = await chips();
-check("أسود drops to 19", /19 راق/.test(spliced["أسود"] ?? ""), spliced["أسود"]);
+console.log("\n2. the shades add up to the ply counter");
 const shownTotal = Number(await t("stat-plies").innerText());
-const sum = Object.values(spliced).reduce(
+const sum = Object.values(await chips()).reduce(
   (s, txt) => s + Number(/(\d+) راق/.exec(txt)?.[1] ?? 0), 0);
 check("the shades add up to the ply counter", sum === shownTotal, `${sum} vs ${shownTotal}`);
-await t("roll-end-new_roll").nth(0).click();
-await page.waitForTimeout(500);
+// The splice subtraction is still in services.shade_plies_from_lines and is
+// covered by the backend tests; there is no way to record a splice from the
+// screen since the buttons came off. See SRS 14.5.
 
 // ---------------------------------------------------------------- 3
 console.log("\n3. it is stored, and the detail page shows it");

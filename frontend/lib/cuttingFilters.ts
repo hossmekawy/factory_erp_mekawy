@@ -95,9 +95,7 @@ export const FILTER_GROUPS: FilterGroup[] = [
     key: "fabric",
     label: "القماش",
     filters: [
-      { param: "shade_note", label: "توصيف اللون", kind: "text", placeholder: "أسود" },
-      { param: "article", label: "الخامة", kind: "text", placeholder: "MEGAN" },
-      { param: "lot_no", label: "اللوط", kind: "text" },
+      { param: "shade_note", label: "اللون", kind: "text", placeholder: "أسود" },
       { param: "total_roll_length_min", label: "إجمالي الأمتار من", kind: "number" },
       { param: "total_roll_length_max", label: "إلى", kind: "number" },
     ],

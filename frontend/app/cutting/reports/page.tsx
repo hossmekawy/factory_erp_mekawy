@@ -24,7 +24,7 @@ type Report = {
   total_shortage?: number;
   total_waste_m?: number;
   total_usable_m?: number;
-  by_lot?: { lot: string; lays: number; shortage: number }[];
+  by_leader?: { team_leader: string; lays: number; shortage: number }[];
 };
 
 const REPORTS = [
@@ -203,24 +203,24 @@ function Reports() {
             )}
           </div>
 
-          {report.by_lot && report.by_lot.length > 0 && (
+          {report.by_leader && report.by_leader.length > 0 && (
             <div className="card mt-3">
-              <h2 className="mb-2 font-bold">العجز حسب اللوط</h2>
+              <h2 className="mb-2 font-bold">العجز حسب رئيس الفريق</h2>
               <p className="mb-2 text-xs text-slate-500">
-                لوط بيتكرر هنا معناه إن أطوال أتوابه ناقصة على طول، مش صدفة.
+                اسم بيتكرر هنا معناه إن العجز مش صدفة — يستاهل نظرة على الفرد نفسه.
               </p>
               <table className="data">
                 <thead>
                   <tr>
-                    <th>اللوط</th>
-                    <th>الفرشات</th>
+                    <th>رئيس الفريق</th>
+                    <th>القصات</th>
                     <th>إجمالي العجز</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {report.by_lot.map((l) => (
-                    <tr key={l.lot}>
-                      <td>{l.lot}</td>
+                  {report.by_leader.map((l) => (
+                    <tr key={l.team_leader}>
+                      <td>{l.team_leader}</td>
                       <td dir="ltr" className="text-right">{l.lays}</td>
                       <td dir="ltr" className="text-right font-semibold text-rose-700">
                         {l.shortage}

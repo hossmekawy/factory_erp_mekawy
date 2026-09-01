@@ -109,7 +109,7 @@ async function fillRows(rows) {
     await t("line-plies").nth(i).fill(String(r.plies));
     await t("line-remnant").nth(i).fill(String(r.rem ?? "0"));
     if (r.shade) await t("line-shade").nth(i).fill(r.shade);
-    if (r.action) await t(`roll-end-${r.action}`).nth(i).click();
+    // roll_end_action has no control any more — see SRS 14.5.
   }
   await page.waitForTimeout(200);
 }
@@ -188,17 +188,18 @@ await setSizes("٣٠ ٣٢ ٣٢ ٣٤ ٣٤ ٣٦");
 check("٣٠ ٣٢ … parsed to 6", (await t("pieces-per-ply").innerText()).includes("6"));
 
 // ---------------------------------------------------------------- 5
-console.log("\n5. a splice takes one ply off the total");
+console.log("\n5. plies add up across rows");
 await fresh();
 await fillHeader({});
 await fillRows([
-  { len: "50.00", plies: 10, rem: "0", shade: "أسود", action: "splice" },
+  { len: "50.00", plies: 10, rem: "0", shade: "أسود" },
   { len: "55.30", plies: 10, rem: "0.50", shade: "أسود" },
 ]);
-check("20 plies minus 1 splice = 19", (await t("stat-plies").innerText()) === "19");
-check("pieces follow the corrected count", (await t("stat-pieces").innerText()) === "114");
-check("splice note shown", await page.getByText("الراق الموصول اتحسب مرة واحدة").isVisible());
-await shot("05-splice");
+check("20 plies", (await t("stat-plies").innerText()) === "20");
+check("pieces follow", (await t("stat-pieces").innerText()) === "120");
+// The splice rule still exists in services.calculate and is covered by the
+// backend tests. It has no control on the screen — nobody used the buttons —
+// so a spliced ply cannot be recorded from here at all. See SRS 14.5.
 
 // ---------------------------------------------------------------- 6
 console.log("\n6. remnant colour: waste under a metre, usable at or over");

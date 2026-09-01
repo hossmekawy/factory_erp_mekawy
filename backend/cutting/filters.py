@@ -66,9 +66,9 @@ class LayFilter(df.FilterSet):
     deviation_max = df.NumberFilter(field_name="deviation_pct", lookup_expr="lte")
 
     # --- fabric ---------------------------------------------------------
+    # Only the shade. Article and lot have no input anywhere, so filtering on
+    # them could only ever return nothing.
     shade_note = CharInFilter(field_name="lines__shade_note", lookup_expr="in", distinct=True)
-    article = CharInFilter(field_name="lines__article", lookup_expr="in", distinct=True)
-    lot_no = CharInFilter(field_name="lines__lot_no", lookup_expr="in", distinct=True)
     total_roll_length_min = df.NumberFilter(field_name="total_roll_length_m", lookup_expr="gte")
     total_roll_length_max = df.NumberFilter(field_name="total_roll_length_m", lookup_expr="lte")
 
@@ -161,8 +161,7 @@ def annotate_lay_queryset(queryset):
 class RemnantLogFilter(df.FilterSet):
     date_from = df.DateFilter(field_name="lay_line__lay__end_date", lookup_expr="gte")
     date_to = df.DateFilter(field_name="lay_line__lay__start_date", lookup_expr="lte")
-    article = CharInFilter(field_name="article", lookup_expr="in")
-    lot_no = CharInFilter(field_name="lot_no", lookup_expr="in")
+    shade_note = CharInFilter(field_name="shade_note", lookup_expr="in")
     length_min = df.NumberFilter(field_name="length_m", lookup_expr="gte")
     length_max = df.NumberFilter(field_name="length_m", lookup_expr="lte")
 

@@ -28,9 +28,7 @@ class TestParseQuery:
         ("عجز:لا", {"has_shortage": "false"}),
         ("مقاس:32", {"size": "32"}),
         ("لون:أسود", {"shade_note": "أسود"}),
-        ("خامة:MEGAN", {"article": "MEGAN"}),
         ("بنك:2", {"bank_code": "2"}),
-        ("لوط:L1", {"lot_no": "L1"}),
         ("حالة:مستنية-ترقيم", {"awaiting_count": "true"}),
         ("حالة:مقفولة", {"status": "closed"}),
     ])
@@ -87,8 +85,16 @@ class TestSearchEndpoint:
         assert self.ids(res) == set()
 
     def test_a_free_word_searches_the_roll_lines(self, supervisor, data):
-        res = supervisor.get("/api/cutting/lays/search/?q=MEGAN")
-        assert self.ids(res) == {data["a"].pk}
+        """The shade is the only line field with an input, so it is the only
+        one searched."""
+        res = supervisor.get("/api/cutting/lays/search/?q=" + "كحلي")
+        assert self.ids(res) == {data["b"].pk}
+
+    def test_the_dropped_tokens_are_treated_as_plain_words(self):
+        """خامة: and لوط: are gone; whatever follows must not vanish."""
+        free, params = parse_query("خامة:MEGAN")
+        assert params == {}
+        assert "MEGAN" in free
 
     def test_a_token_and_a_word_narrow_together(self, supervisor, data):
         res = supervisor.get("/api/cutting/lays/search/?q=" + "لون:كحلي")

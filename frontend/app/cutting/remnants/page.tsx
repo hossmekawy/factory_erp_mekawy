@@ -19,8 +19,6 @@ type Remnant = {
   lay_line: number;
   length_m: string;
   shade_note: string;
-  lot_no: string;
-  article: string;
   disposition: "waste" | "usable";
   disposition_label: string;
   logged_at: string;
@@ -137,8 +135,6 @@ function Remnants() {
                 <th>الطول</th>
                 <th>التصنيف</th>
                 <th>اللون</th>
-                <th>اللوط</th>
-                <th>الخامة</th>
                 <th>القصة</th>
               </tr>
             </thead>
@@ -160,8 +156,6 @@ function Remnants() {
                     </span>
                   </td>
                   <td>{r.shade_note || "—"}</td>
-                  <td>{r.lot_no || "—"}</td>
-                  <td><bdi>{r.article || "—"}</bdi></td>
                   <td>
                     {r.lay ? (
                       <Link href={`/cutting/${r.lay}`} className="text-red-700 hover:underline">

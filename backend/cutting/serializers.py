@@ -135,6 +135,36 @@ class TeamLeaderSerializer(serializers.ModelSerializer):
 
 # --- lay parts -----------------------------------------------------------
 
+class NextLineNumber:
+    """Default for `line_no`: the next free number on the lay being written to.
+
+    A default rather than something computed in `validate()`, because the
+    unique-together validator on (lay, line_no) runs first and reports the
+    field as missing before `validate()` is ever reached. The client sends what
+    it read off the notebook; the position in the table is ours.
+    """
+
+    requires_context = True
+
+    def __call__(self, field):
+        serializer = field.parent
+        lay_id = None
+        initial = getattr(serializer, "initial_data", None)
+        if isinstance(initial, dict):
+            lay_id = initial.get("lay")
+        if not lay_id:
+            lay_id = getattr(serializer.context.get("lay"), "pk", None)
+        if not lay_id:
+            return 1
+        last = (
+            LayLine.objects.filter(lay_id=lay_id)
+            .order_by("-line_no")
+            .values_list("line_no", flat=True)
+            .first()
+        )
+        return (last or 0) + 1
+
+
 class LayLineSerializer(ModelCleanMixin, serializers.ModelSerializer):
     remnant_disposition_label = serializers.CharField(
         source="get_remnant_disposition_display", read_only=True
@@ -143,7 +173,7 @@ class LayLineSerializer(ModelCleanMixin, serializers.ModelSerializer):
         source="get_roll_end_action_display", read_only=True
     )
     has_splice = serializers.BooleanField(read_only=True)
-    line_no = serializers.IntegerField(required=False)
+    line_no = serializers.IntegerField(required=False, default=NextLineNumber())
 
     class Meta:
         model = LayLine
@@ -169,8 +199,8 @@ class LayLineSerializer(ModelCleanMixin, serializers.ModelSerializer):
 class LayLineNestedSerializer(LayLineSerializer):
     """Lines posted inside a lay payload — the parent is not known yet."""
 
-    # The phone posts the rows in notebook order; numbering them is our job.
-    line_no = serializers.IntegerField(required=False)
+    # The phone posts the rows in notebook order; create() numbers them.
+    line_no = serializers.IntegerField(required=False, allow_null=True, default=None)
 
     class Meta(LayLineSerializer.Meta):
         fields = [f for f in LayLineSerializer.Meta.fields if f != "lay"]
@@ -468,7 +498,9 @@ class LaySerializer(ModelCleanMixin, serializers.ModelSerializer):
         services.sync_breakdown_from_size_set(lay, size_set)
 
         for i, line in enumerate(lines_data, start=1):
-            line.setdefault("line_no", i)
+            # `or i` not setdefault: the nested serializer sends line_no=None
+            # explicitly, and a key that is present but null defeats setdefault.
+            line["line_no"] = line.get("line_no") or i
             LayLine.objects.create(lay=lay, **line)
         services.recalculate(lay)
         if shade_entries is not None and lay.entry_mode == Lay.MODE_QUICK:
@@ -504,7 +536,7 @@ class LaySerializer(ModelCleanMixin, serializers.ModelSerializer):
         if lines_data is not None:
             instance.lines.all().delete()
             for i, line in enumerate(lines_data, start=1):
-                line.setdefault("line_no", i)
+                line["line_no"] = line.get("line_no") or i
                 LayLine.objects.create(lay=instance, **line)
 
         services.recalculate(instance)

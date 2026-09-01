@@ -53,15 +53,17 @@ class TestShortage:
         codes = [r["code"] for r in report["rows"]]
         assert codes == [spread["short"].code]
 
-    def test_it_carries_the_article_and_lot(self, spread):
+    def test_it_carries_the_shades_that_are_actually_filled(self, spread):
         row = reports.shortage_report()["rows"][0]
-        assert row["articles"] == "MEGAN"
-        assert row["lots"] == "L9"
+        assert "code" in row and "team_leader" in row
+        assert "articles" not in row and "lots" not in row
 
-    def test_it_totals_by_lot_so_a_bad_lot_shows_up(self, spread):
+    def test_it_totals_by_team_leader(self, spread):
+        """It used to group by lot. Nothing fills the lot, so that table was
+        always empty — it groups by a field that really is filled."""
         report = reports.shortage_report()
-        assert report["by_lot"][0]["lot"] == "L9"
-        assert report["by_lot"][0]["lays"] == 1
+        assert "by_lot" not in report
+        assert report["by_leader"][0]["lays"] == 1
         assert report["total_shortage"] > 0
 
 

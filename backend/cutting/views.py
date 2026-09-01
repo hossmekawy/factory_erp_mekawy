@@ -17,6 +17,7 @@ from django.db.models import Avg, Count, Prefetch, Sum
 from rest_framework import status, viewsets
 from rest_framework.decorators import action, api_view, permission_classes
 from rest_framework.exceptions import PermissionDenied
+from rest_framework.exceptions import ValidationError as DRFValidationError
 from rest_framework.response import Response
 
 from hr.attendance import present_codes
@@ -32,6 +33,7 @@ from .models import (
     Category,
     GarmentModel,
     Lay,
+    LayAudit,
     LayLine,
     Notification,
     RemnantLog,
@@ -212,7 +214,7 @@ class LayViewSet(ServiceErrorMixin, viewsets.ModelViewSet):
     search_fields = [
         "code", "garment_model__name", "garment_model__code",
         "team_leader__full_name", "notes",
-        "lines__article", "lines__shade_note", "lines__lot_no", "lines__roll_no",
+        "lines__shade_note",
     ]
     # SRS 7.1: sortable by any column shown in the list.
     ordering_fields = [
@@ -579,23 +581,78 @@ class SavedFilterViewSet(ServiceErrorMixin, viewsets.ModelViewSet):
 
 
 class LayLineViewSet(ServiceErrorMixin, viewsets.ModelViewSet):
+    """Roll lines, editable in their own right.
+
+    A line typed wrong used to mean deleting the whole lay and entering it
+    again, which is not a thing anyone will do at a bank with a notebook in
+    hand. The rules match the header's: an open lay changes freely, a closed
+    one needs a reason and the reason is recorded.
+
+    Every write recalculates the lay — plies, metrage, shortage and the shade
+    split all move together — so the stored numbers can never drift from the
+    lines they came from.
+    """
+
     queryset = LayLine.objects.select_related("lay")
     serializer_class = LayLineSerializer
     permission_classes = [CanEditLays]
-    filterset_fields = ["lay", "article", "lot_no", "roll_end_action", "remnant_disposition"]
+    filterset_fields = ["lay", "roll_end_action", "remnant_disposition"]
+
+    def _reason(self):
+        return (self.request.data.get("edit_reason") or "").strip()
+
+    def _require_reason(self, lay):
+        """SRS 3, applied to the lines as well as the header."""
+        if lay.status == Lay.STATUS_OPEN:
+            return
+        if not self._reason():
+            raise DRFValidationError({
+                "detail": "القصة مقفولة — لازم سبب للتعديل",
+                "issues": [{
+                    "code": "edit_reason", "level": "error",
+                    "message": "القصة مقفولة. اكتب سبب التعديل — بيتسجّل في سجل النشاط.",
+                    "field": "edit_reason", "line_no": None,
+                }],
+            })
+
+    def _log(self, lay, action, line, before=None):
+        if lay.status == Lay.STATUS_OPEN:
+            return
+        LayAudit.objects.create(
+            lay=lay, user=self.request.user, action=action,
+            field=f"سطر {line.line_no}",
+            old_value=before or "", new_value=_describe_line(line) if before is None else
+            _describe_line(line),
+            reason=self._reason(),
+        )
 
     def perform_create(self, serializer):
+        lay = serializer.validated_data.get("lay")
+        self._require_reason(lay)
         line = serializer.save()
         services.recalculate(line.lay)
+        self._log(line.lay, "line_added", line)
 
     def perform_update(self, serializer):
+        before = _describe_line(serializer.instance)
+        self._require_reason(serializer.instance.lay)
         line = serializer.save()
         services.recalculate(line.lay)
+        self._log(line.lay, "line_edited", line, before=before)
 
     def perform_destroy(self, instance):
         lay = instance.lay
+        self._require_reason(lay)
+        described = _describe_line(instance)
+        line_no = instance.line_no
         instance.delete()
         services.recalculate(lay)
+        if lay.status != Lay.STATUS_OPEN:
+            LayAudit.objects.create(
+                lay=lay, user=self.request.user, action="line_deleted",
+                field=f"سطر {line_no}", old_value=described, new_value="",
+                reason=self._reason(),
+            )
 
 
 class RemnantLogViewSet(ServiceErrorMixin, viewsets.ReadOnlyModelViewSet):
@@ -607,6 +664,16 @@ class RemnantLogViewSet(ServiceErrorMixin, viewsets.ReadOnlyModelViewSet):
     filterset_class = filters.RemnantLogFilter
     search_fields = ["article", "lot_no", "shade_note"]
     ordering_fields = ["logged_at", "length_m"]
+
+
+def _describe_line(line) -> str:
+    """One readable line for the activity log, so an edit can be read back."""
+    parts = [f"{line.roll_length_m} م", f"{line.plies} راق"]
+    if line.remnant_m:
+        parts.append(f"باقي {line.remnant_m}")
+    if line.shade_note:
+        parts.append(line.shade_note)
+    return " · ".join(parts)
 
 
 def _parse_date(request, name):

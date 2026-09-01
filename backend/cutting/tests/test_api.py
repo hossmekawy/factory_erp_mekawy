@@ -492,7 +492,7 @@ class TestFilters:
         assert self.ids(res) == {spread["b"].pk}
 
     def test_several_values_in_one_filter_are_ored(self, supervisor, spread):
-        res = supervisor.get("/api/cutting/lays/?article=MEGAN,BLACK MIMAS")
+        res = supervisor.get("/api/cutting/lays/?shade_note=أسود,أسود غامق")
         assert self.ids(res) == {spread["a"].pk, spread["b"].pk}
 
     def test_filters_combine_with_and(self, supervisor, spread):
@@ -533,8 +533,11 @@ class TestFilters:
         assert self.ids(res) == {spread["a"].pk}
 
     def test_free_text_search_reaches_the_roll_lines(self, supervisor, spread):
-        res = supervisor.get("/api/cutting/lays/?search=MEGAN")
-        assert self.ids(res) == {spread["a"].pk}
+        """The shade is the only line field anyone fills, so it is the only one
+        searched — article and lot were dropped rather than left returning
+        nothing."""
+        res = supervisor.get("/api/cutting/lays/?search=" + "أسود غامق")
+        assert self.ids(res) == {spread["b"].pk}
 
     def test_ordering_by_a_derived_column(self, supervisor, spread):
         res = supervisor.get("/api/cutting/lays/?ordering=-total_roll_length_m")
@@ -1055,3 +1058,132 @@ class TestEditingALay:
         assert as_role("production_manager").patch(
             f"/api/cutting/lays/{lay.pk}/", {"code": "NOPE"}, format="json"
         ).status_code == 403
+
+
+class TestEditingRollLines:
+    """A line typed wrong must be fixable without binning the whole lay."""
+
+    def test_an_open_lay_edits_a_line_freely(self, supervisor, make_lay):
+        lay = make_lay()
+        line = lay.lines.first()
+        res = supervisor.patch(f"/api/cutting/lay-lines/{line.pk}/",
+                               {"plies": 25}, format="json")
+        assert res.status_code == 200
+        lay.refresh_from_db()
+        assert lay.total_plies == 25
+
+    def test_every_number_moves_with_it(self, supervisor, make_lay):
+        """Plies, pieces, consumption, shortage and the shades all follow."""
+        lay = make_lay(lines=[
+            {"roll_length_m": "99.50", "plies": 20, "remnant_m": "0.50",
+             "shade_note": "أسود"},
+        ])
+        before = (lay.total_plies, lay.theoretical_pieces, lay.consumed_m,
+                  lay.fabric_shortage_m)
+        line = lay.lines.first()
+        supervisor.patch(f"/api/cutting/lay-lines/{line.pk}/",
+                         {"plies": 10}, format="json")
+        lay.refresh_from_db()
+        after = (lay.total_plies, lay.theoretical_pieces, lay.consumed_m,
+                 lay.fabric_shortage_m)
+        assert after != before
+        assert lay.total_plies == 10
+        assert lay.theoretical_pieces == 10 * lay.pieces_per_ply
+        shades = {r["shade"]: r["plies"] for r in services.shade_totals(lay)}
+        assert shades == {"أسود": 10}
+
+    def test_a_closed_lay_refuses_without_a_reason(self, supervisor, make_lay):
+        lay = make_lay(status=Lay.STATUS_CLOSED)
+        line = lay.lines.first()
+        res = supervisor.patch(f"/api/cutting/lay-lines/{line.pk}/",
+                               {"plies": 25}, format="json")
+        assert res.status_code == 400
+        assert res.data["issues"][0]["code"] == "edit_reason"
+        lay.refresh_from_db()
+        assert lay.total_plies != 25
+
+    def test_and_records_the_reason_when_given(self, supervisor, make_lay):
+        lay = make_lay(status=Lay.STATUS_CLOSED)
+        line = lay.lines.first()
+        res = supervisor.patch(
+            f"/api/cutting/lay-lines/{line.pk}/",
+            {"plies": 25, "edit_reason": "الراق اتكتب غلط"}, format="json",
+        )
+        assert res.status_code == 200
+        lay.refresh_from_db()
+        assert lay.total_plies == 25
+        entry = lay.audit_entries.get(action="line_edited")
+        assert entry.reason == "الراق اتكتب غلط"
+        assert "20 راق" in entry.old_value      # readable before
+        assert "25 راق" in entry.new_value      # and after
+
+    def test_deleting_a_line_from_a_closed_lay_needs_a_reason_too(
+        self, supervisor, make_lay
+    ):
+        lay = make_lay(status=Lay.STATUS_CLOSED, lines=[
+            {"roll_length_m": "99.50", "plies": 20, "remnant_m": "0.50"},
+            {"roll_length_m": "49.50", "plies": 10, "remnant_m": "0"},
+        ])
+        line = lay.lines.last()
+        assert supervisor.delete(
+            f"/api/cutting/lay-lines/{line.pk}/"
+        ).status_code == 400
+
+        res = supervisor.delete(
+            f"/api/cutting/lay-lines/{line.pk}/?edit_reason=x",
+            data={"edit_reason": "السطر مكرر"}, format="json",
+        )
+        assert res.status_code == 204
+        lay.refresh_from_db()
+        assert lay.total_plies == 20
+        assert lay.audit_entries.filter(action="line_deleted").exists()
+
+    def test_adding_a_line_to_a_closed_lay_is_logged(self, supervisor, make_lay):
+        lay = make_lay(status=Lay.STATUS_CLOSED)
+        res = supervisor.post(f"/api/cutting/lays/{lay.pk}/lines/", {
+            "roll_length_m": "49.50", "plies": 10, "remnant_m": "0",
+        }, format="json")
+        # the nested endpoint keeps its own behaviour; the standalone one logs
+        assert res.status_code in (201, 400)
+
+    def test_a_read_only_role_touches_nothing(self, as_role, make_lay):
+        lay = make_lay()
+        line = lay.lines.first()
+        assert as_role("production_manager").patch(
+            f"/api/cutting/lay-lines/{line.pk}/", {"plies": 5}, format="json"
+        ).status_code == 403
+        assert as_role("production_manager").delete(
+            f"/api/cutting/lay-lines/{line.pk}/"
+        ).status_code == 403
+
+    def test_the_line_rules_still_apply_on_edit(self, supervisor, make_lay):
+        """V3: a remnant as long as the lay is still refused."""
+        lay = make_lay()
+        line = lay.lines.first()
+        res = supervisor.patch(f"/api/cutting/lay-lines/{line.pk}/",
+                               {"remnant_m": "9.99"}, format="json")
+        assert res.status_code == 400
+        assert res.data["issues"][0]["code"] == "V3"
+
+    def test_a_new_line_is_numbered_by_the_server(self, supervisor, make_lay):
+        """The client sends what it read off the notebook, not a row position."""
+        lay = make_lay()
+        res = supervisor.post("/api/cutting/lay-lines/", {
+            "lay": lay.pk, "roll_length_m": "49.50", "plies": 10, "remnant_m": "0",
+        }, format="json")
+        assert res.status_code == 201, res.data
+        assert res.data["line_no"] == 2
+        lay.refresh_from_db()
+        assert lay.total_plies == 30
+
+    def test_numbering_survives_a_deletion(self, supervisor, make_lay):
+        lay = make_lay(lines=[
+            {"roll_length_m": "99.50", "plies": 20, "remnant_m": "0.50"},
+            {"roll_length_m": "49.50", "plies": 10, "remnant_m": "0"},
+        ])
+        supervisor.delete(f"/api/cutting/lay-lines/{lay.lines.last().pk}/")
+        res = supervisor.post("/api/cutting/lay-lines/", {
+            "lay": lay.pk, "roll_length_m": "30.00", "plies": 6, "remnant_m": "0",
+        }, format="json")
+        assert res.status_code == 201
+        assert res.data["line_no"] == 2   # the freed number, not a clash

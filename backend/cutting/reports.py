@@ -89,41 +89,46 @@ def metrage_by_model(start=None, end=None, include_backfill=False) -> dict:
 
 SHORTAGE_COLUMNS = [
     ("code", "كود القصة"), ("date", "التاريخ"), ("model", "الموديل"),
-    ("team_leader", "رئيس الفريق"), ("bank", "البنك"),
-    ("articles", "الخامة"), ("lots", "اللوط"),
+    ("team_leader", "رئيس الفريق"), ("bank", "البنك"), ("shades", "الألوان"),
     ("roll_length", "أطوال الأتواب"), ("consumed", "المستهلك"),
     ("remnant", "البواقي"), ("shortage", "العجز"),
 ]
 
 
 def shortage_report(start=None, end=None, include_backfill=False) -> dict:
-    """Only lays flagged over tolerance, with the articles and lots on them —
-    the point is to expose a lot whose rolls are consistently short."""
+    """Lays whose fabric does not add up, past the tolerance.
+
+    It used to group by lot as well, to expose a lot whose rolls run
+    consistently short. Nothing anywhere fills the lot number, so that grouping
+    only ever produced an empty table — a report that cannot do the thing it
+    claims is worse than one that does less. It groups by **team leader**
+    instead, which really is filled on every lay.
+    """
     qs = _base(start, end, include_backfill).filter(has_shortage=True).order_by("-end_date")
 
     rows = []
-    for lay in qs.prefetch_related("lines"):
-        lines = list(lay.lines.all())
+    for lay in qs.prefetch_related("lines", "shade_breakdown"):
         rows.append({
             "code": lay.code,
             "date": lay.end_date.isoformat(),
             "model": lay.garment_model.name,
             "team_leader": lay.team_leader.full_name,
             "bank": lay.bank.name,
-            "articles": " / ".join(sorted({l.article for l in lines if l.article})),
-            "lots": " / ".join(sorted({l.lot_no for l in lines if l.lot_no})),
+            "shades": " / ".join(r.shade for r in lay.shade_breakdown.all()),
             "roll_length": lay.total_roll_length_m,
             "consumed": lay.consumed_m,
             "remnant": lay.total_remnant_m,
             "shortage": lay.fabric_shortage_m,
         })
 
-    by_lot = {}
+    by_leader = {}
     for row in rows:
-        for lot in [l for l in row["lots"].split(" / ") if l]:
-            entry = by_lot.setdefault(lot, {"lot": lot, "lays": 0, "shortage": Decimal("0")})
-            entry["lays"] += 1
-            entry["shortage"] += row["shortage"]
+        entry = by_leader.setdefault(
+            row["team_leader"],
+            {"team_leader": row["team_leader"], "lays": 0, "shortage": Decimal("0")},
+        )
+        entry["lays"] += 1
+        entry["shortage"] += row["shortage"]
 
     return {
         "title": "تقرير العجز",
@@ -131,7 +136,7 @@ def shortage_report(start=None, end=None, include_backfill=False) -> dict:
         "columns": SHORTAGE_COLUMNS,
         "rows": rows,
         "total_shortage": sum((r["shortage"] for r in rows), Decimal("0")),
-        "by_lot": sorted(by_lot.values(), key=lambda e: e["shortage"], reverse=True),
+        "by_leader": sorted(by_leader.values(), key=lambda e: e["shortage"], reverse=True),
     }
 
 
@@ -199,7 +204,7 @@ def productivity_report(start=None, end=None, include_backfill=False) -> dict:
 # --- 9.5 remnants and waste ----------------------------------------------
 
 REMNANT_COLUMNS = [
-    ("article", "الخامة"), ("lot_no", "اللوط"), ("disposition", "التصنيف"),
+    ("shade", "اللون"), ("disposition", "التصنيف"),
     ("entries", "عدد البواقي"), ("length", "الأمتار"),
 ]
 
@@ -214,14 +219,13 @@ def remnant_report(start=None, end=None, include_backfill=False) -> dict:
         qs = qs.filter(lay_line__lay__start_date__lte=end)
 
     grouped = (
-        qs.values("article", "lot_no", "disposition")
+        qs.values("shade_note", "disposition")
         .annotate(entries=Count("id"), length=Sum("length_m"))
         .order_by("-length")
     )
     rows = [
         {
-            "article": g["article"] or "—",
-            "lot_no": g["lot_no"] or "—",
+            "shade": g["shade_note"] or "—",
             "disposition": "هالك" if g["disposition"] == "waste" else "صالح",
             "entries": g["entries"],
             "length": g["length"] or Decimal("0"),

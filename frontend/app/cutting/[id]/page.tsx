@@ -11,6 +11,8 @@ import { useRouter } from "next/navigation";
 import {
   ArrowRight,
   Pencil,
+  Plus,
+  Trash2,
   Check,
   ClipboardList,
   Loader2,
@@ -118,6 +120,9 @@ const ACTION_LABEL: Record<string, string> = {
   close: "قفل الفرشة",
   output: "تسجيل القطع",
   edit_after_close: "تعديل بعد القفل",
+  line_added: "إضافة سطر",
+  line_edited: "تعديل سطر",
+  line_deleted: "حذف سطر",
 };
 
 export default function Page({ params }: { params: Promise<{ id: string }> }) {
@@ -139,6 +144,7 @@ function Detail({ id }: { id: string }) {
   const [busy, setBusy] = useState(false);
   const [zoom, setZoom] = useState<string | null>(null);
   const [editing, setEditing] = useState(false);
+  const [editLine, setEditLine] = useState<Line | "new" | null>(null);
 
   const load = useCallback(() => {
     setLoading(true);
@@ -390,7 +396,7 @@ function Detail({ id }: { id: string }) {
                 <th>الراق</th>
                 <th>الباقي</th>
                 <th>اللون</th>
-                <th>نهاية التوب</th>
+                <th />
               </tr>
             </thead>
             <tbody>
@@ -413,12 +419,29 @@ function Detail({ id }: { id: string }) {
                     </span>
                   </td>
                   <td>{l.shade_note || "—"}</td>
-                  <td className="text-xs">{l.roll_end_action_label}</td>
+                  <td className="whitespace-nowrap">
+                    <button
+                      data-testid="edit-line"
+                      className="p-1 text-slate-400 hover:text-red-700"
+                      onClick={() => setEditLine(l)}
+                      aria-label="تعديل السطر"
+                    >
+                      <Pencil className="h-4 w-4" />
+                    </button>
+                  </td>
                 </tr>
               ))}
             </tbody>
           </table>
         </div>
+        <button
+          data-testid="add-line"
+          className="btn-secondary mt-3 w-full print:hidden"
+          onClick={() => setEditLine("new")}
+        >
+          <Plus className="h-4 w-4" />
+          إضافة سطر
+        </button>
       </section>
 
       {/* ---- 5. consumption and shortage ---- */}
@@ -512,6 +535,19 @@ function Detail({ id }: { id: string }) {
           </ul>
         )}
       </section>
+
+      {editLine && (
+        <EditLineDialog
+          lay={lay}
+          line={editLine === "new" ? null : editLine}
+          shades={lay.lines.map((l) => l.shade_note).filter(Boolean)}
+          onClose={() => setEditLine(null)}
+          onSaved={() => {
+            setEditLine(null);
+            load();
+          }}
+        />
+      )}
 
       {editing && (
         <EditLayDialog
@@ -734,6 +770,201 @@ function EditLayDialog({
             className="btn-primary flex-1"
             disabled={busy || !code.trim() || (!isOpen && !reason.trim())}
             onClick={save}
+          >
+            {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : "حفظ"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// One roll line. A line typed wrong used to mean deleting the whole lay and
+// entering it again — not a thing anyone does at a bank with a notebook in
+// hand. Same rules as the header: an open lay changes freely, a closed one
+// needs a reason, and every number on the lay is recalculated by the server
+// afterwards.
+function EditLineDialog({
+  lay,
+  line,
+  shades,
+  onClose,
+  onSaved,
+}: {
+  lay: Lay;
+  line: Line | null;
+  shades: string[];
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const isOpen = lay.status === "open";
+  const [length, setLength] = useState(line?.roll_length_m ?? "");
+  const [plies, setPlies] = useState(line ? String(line.plies) : "");
+  const [remnant, setRemnant] = useState(line?.remnant_m ?? "0");
+  const [shade, setShade] = useState(line?.shade_note ?? "");
+  const [reason, setReason] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const [issues, setIssues] = useState<Issue[]>([]);
+
+  const body = () => ({
+    roll_length_m: length,
+    plies: Number(plies),
+    remnant_m: remnant || "0",
+    shade_note: shade.trim(),
+    ...(isOpen ? {} : { edit_reason: reason }),
+  });
+
+  const run = async (method: "POST" | "PATCH" | "DELETE") => {
+    setBusy(true);
+    setError("");
+    setIssues([]);
+    try {
+      if (method === "DELETE") {
+        await api(`/api/cutting/lay-lines/${line!.id}/`, {
+          method: "DELETE",
+          body: JSON.stringify(isOpen ? {} : { edit_reason: reason }),
+        });
+      } else if (method === "POST") {
+        await api("/api/cutting/lay-lines/", {
+          method: "POST",
+          body: JSON.stringify({ lay: lay.id, ...body() }),
+        });
+      } else {
+        await api(`/api/cutting/lay-lines/${line!.id}/`, {
+          method: "PATCH",
+          body: JSON.stringify(body()),
+        });
+      }
+      onSaved();
+    } catch (e) {
+      const found = issuesOf((e as ApiError).data);
+      setIssues(found);
+      if (!found.length) setError(errorText(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const incomplete = !length || !Number(plies) || (!isOpen && !reason.trim());
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-0 sm:items-center sm:p-4 print:hidden">
+      <div className="max-h-[92vh] w-full max-w-md overflow-y-auto rounded-t-2xl bg-white p-4 sm:rounded-2xl">
+        <div className="mb-3 flex items-center justify-between">
+          <h2 className="font-bold">{line ? `تعديل سطر ${line.line_no}` : "سطر جديد"}</h2>
+          <button onClick={onClose} aria-label="إغلاق">
+            <X className="h-5 w-5 text-slate-400" />
+          </button>
+        </div>
+
+        {!isOpen && (
+          <p className="mb-3 rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-800">
+            القصة مقفولة — التعديل بيتسجّل في سجل النشاط، والحسابات كلها هتتعاد.
+          </p>
+        )}
+
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className="!text-xs">طول التوب</label>
+            <input
+              data-testid="line-length-edit"
+              dir="ltr"
+              className="ltr-num min-h-11"
+              inputMode="decimal"
+              value={length}
+              onChange={(e) => setLength(e.target.value)}
+            />
+          </div>
+          <div>
+            <label className="!text-xs">الراق</label>
+            <input
+              data-testid="line-plies-edit"
+              dir="ltr"
+              className="ltr-num min-h-11"
+              inputMode="numeric"
+              value={plies}
+              onChange={(e) => setPlies(e.target.value)}
+            />
+          </div>
+          <div>
+            <label className="!text-xs">الباقي</label>
+            <input
+              data-testid="line-remnant-edit"
+              dir="ltr"
+              className="ltr-num min-h-11"
+              inputMode="decimal"
+              value={remnant}
+              onChange={(e) => setRemnant(e.target.value)}
+            />
+          </div>
+          <div>
+            <label className="!text-xs">اللون</label>
+            <input
+              data-testid="line-shade-edit"
+              className="min-h-11"
+              list="known-shades"
+              value={shade}
+              onChange={(e) => setShade(e.target.value)}
+            />
+            <datalist id="known-shades">
+              {[...new Set(shades)].map((sh) => (
+                <option key={sh} value={sh} />
+              ))}
+            </datalist>
+          </div>
+        </div>
+
+        {!isOpen && (
+          <div className="mt-3">
+            <label>
+              سبب التعديل<span className="text-rose-600"> *</span>
+            </label>
+            <textarea
+              data-testid="line-reason"
+              rows={2}
+              value={reason}
+              onChange={(e) => setReason(e.target.value)}
+              placeholder="مثلاً: الراق اتكتب غلط"
+            />
+          </div>
+        )}
+
+        {error && <p className="mt-3 text-sm font-semibold text-rose-700">{error}</p>}
+        {issues.map((i, n) => (
+          <div
+            key={n}
+            data-testid="line-issue"
+            data-code={i.code}
+            className="mt-2 rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-800"
+          >
+            <span className="ml-2 rounded bg-white/70 px-1.5 py-0.5 font-mono text-xs">
+              {i.code}
+            </span>
+            {i.message}
+          </div>
+        ))}
+
+        <div className="mt-4 flex gap-2">
+          {line && (
+            <button
+              data-testid="delete-line"
+              className="btn-danger"
+              disabled={busy || (!isOpen && !reason.trim())}
+              onClick={() => {
+                if (confirm("متأكد إنك عايز تمسح السطر ده؟")) run("DELETE");
+              }}
+              aria-label="حذف السطر"
+            >
+              <Trash2 className="h-4 w-4" />
+            </button>
+          )}
+          <button className="btn-secondary flex-1" onClick={onClose}>إلغاء</button>
+          <button
+            data-testid="save-line"
+            className="btn-primary flex-1"
+            disabled={busy || incomplete}
+            onClick={() => run(line ? "PATCH" : "POST")}
           >
             {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : "حفظ"}
           </button>

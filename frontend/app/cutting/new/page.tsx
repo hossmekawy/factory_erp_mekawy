@@ -21,8 +21,6 @@ import { compressImage } from "@/lib/image";
 import {
   Issue,
   LineDraft,
-  ROLL_END_LABEL,
-  RollEndAction,
   SizeChip,
   emptyLine,
   fmt,
@@ -919,23 +917,6 @@ export default function NewLayPage() {
                       </button>
                     </div>
 
-                    <div className="mr-7 flex gap-1">
-                      {(Object.keys(ROLL_END_LABEL) as RollEndAction[]).map((a) => (
-                        <button
-                          key={a}
-                          type="button"
-                          data-testid={`roll-end-${a}`}
-                          onClick={() => setLine(l.key, { roll_end_action: a })}
-                          className={`rounded-full px-2.5 py-1 text-xs font-medium transition ${
-                            l.roll_end_action === a
-                              ? "bg-red-600 text-white"
-                              : "bg-slate-100 text-slate-500"
-                          }`}
-                        >
-                          {ROLL_END_LABEL[a]}
-                        </button>
-                      ))}
-                    </div>
                   </div>
                 );
               })}
@@ -961,11 +942,7 @@ export default function NewLayPage() {
               إضافة سطر
             </button>
 
-            {totals.spliceCount > 0 && (
-              <p className="mt-2 text-center text-xs text-slate-500">
-                {totals.spliceCount} وصل — الراق الموصول اتحسب مرة واحدة
-              </p>
-            )}
+
           </section>
         ) : (
           <section className="card mt-3 grid grid-cols-2 gap-3">
