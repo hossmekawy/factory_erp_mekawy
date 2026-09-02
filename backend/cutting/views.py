@@ -24,6 +24,7 @@ from hr.attendance import present_codes
 from hr.models import Employee
 
 from . import exceptions, filters, notifications, search, services
+from . import lay_pdf
 from . import reports as cutting_reports
 from . import sizes as size_utils
 from . import validators
@@ -361,6 +362,24 @@ class LayViewSet(ServiceErrorMixin, viewsets.ModelViewSet):
             **services.pieces_loss_for(lay, actual),
             "issues": [exceptions.issue_dict(i) for i in issues],
         })
+
+    @action(detail=True, methods=["get"])
+    def pdf(self, request, pk=None):
+        """A printable sheet for one lay: `?paper=a4` (default) or `?paper=a5`.
+
+        Not the browser's own print — that put the navigation and the buttons
+        on the paper. This is a real document with the factory's name and logo,
+        in grey-scale because these come off an office laser printer.
+
+        The parameter is `paper`, not `size`: `size` is already the filter for
+        "a garment size present in this lay", and get_object() runs the
+        filters, so `?size=a5` filtered the lay away and answered 404.
+        """
+        lay = self.get_object()
+        buf = lay_pdf.build_lay_pdf(lay, request.query_params.get("paper", "a4"))
+        response = HttpResponse(buf.read(), content_type="application/pdf")
+        response["Content-Disposition"] = f'attachment; filename="lay-{lay.code}.pdf"'
+        return response
 
     @action(detail=True, methods=["post"])
     def approve(self, request, pk=None):

@@ -21,7 +21,7 @@ import {
   X,
 } from "lucide-react";
 import Shell from "@/components/Shell";
-import { ApiError, api, errorText } from "@/lib/api";
+import { ApiError, api, downloadFile, errorText } from "@/lib/api";
 import { Issue, ROLL_END_LABEL, fmt, issuesOf } from "@/lib/cutting";
 import { STATUS_LABEL, STATUS_STYLE } from "@/lib/cuttingFilters";
 
@@ -145,6 +145,7 @@ function Detail({ id }: { id: string }) {
   const [zoom, setZoom] = useState<string | null>(null);
   const [editing, setEditing] = useState(false);
   const [editLine, setEditLine] = useState<Line | "new" | null>(null);
+  const [printing, setPrinting] = useState<"a4" | "a5" | null>(null);
 
   const load = useCallback(() => {
     setLoading(true);
@@ -161,6 +162,21 @@ function Detail({ id }: { id: string }) {
   }, [id]);
 
   useEffect(load, [load]);
+
+  const downloadSheet = async (size: "a4" | "a5") => {
+    setPrinting(size);
+    setError("");
+    try {
+      await downloadFile(
+        `/api/cutting/lays/${id}/pdf/?paper=${size}`,
+        `قصة-${lay?.code ?? id}-${size}.pdf`
+      );
+    } catch (e) {
+      setError(errorText(e));
+    } finally {
+      setPrinting(null);
+    }
+  };
 
   const act = async (path: string, body: object = {}) => {
     setBusy(true);
@@ -265,9 +281,33 @@ function Detail({ id }: { id: string }) {
             <Pencil className="h-4 w-4" />
             تعديل
           </button>
-          <button className="btn-secondary" onClick={() => window.print()}>
-            <Printer className="h-4 w-4" />
-            طباعة
+          {/* A built sheet, not the browser's print — that put the navigation
+              and the buttons on the paper. */}
+          <button
+            data-testid="pdf-a4"
+            className="btn-secondary"
+            disabled={printing !== null}
+            onClick={() => downloadSheet("a4")}
+          >
+            {printing === "a4" ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <Printer className="h-4 w-4" />
+            )}
+            طباعة A4
+          </button>
+          <button
+            data-testid="pdf-a5"
+            className="btn-secondary"
+            disabled={printing !== null}
+            onClick={() => downloadSheet("a5")}
+          >
+            {printing === "a5" ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <Printer className="h-4 w-4" />
+            )}
+            A5
           </button>
         </div>
 

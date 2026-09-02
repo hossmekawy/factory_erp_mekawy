@@ -7,7 +7,7 @@
     "build": "next build",
     "start": "next start -p 3002",
     "lint": "eslint",
-    "test:ui": "node tests/ui/new-lay.mjs && node tests/ui/sizes-entry.mjs && node tests/ui/size-presets.mjs && node tests/ui/shade-breakdown.mjs && node tests/ui/edit-lay.mjs && node tests/ui/line-edit.mjs && node tests/ui/lay-list.mjs && node tests/ui/counting.mjs && node tests/ui/catalogues.mjs && node tests/ui/reports.mjs"
+    "test:ui": "node tests/ui/new-lay.mjs && node tests/ui/sizes-entry.mjs && node tests/ui/size-presets.mjs && node tests/ui/shade-breakdown.mjs && node tests/ui/edit-lay.mjs && node tests/ui/line-edit.mjs && node tests/ui/lay-pdf.mjs && node tests/ui/lay-list.mjs && node tests/ui/counting.mjs && node tests/ui/catalogues.mjs && node tests/ui/reports.mjs"
   },
   "dependencies": {
     "lucide-react": "^1.24.0",

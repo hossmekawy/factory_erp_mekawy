@@ -1187,3 +1187,85 @@ class TestEditingRollLines:
         }, format="json")
         assert res.status_code == 201
         assert res.data["line_no"] == 2   # the freed number, not a clash
+
+
+class TestLaySheetPdf:
+    """The printable sheet. The browser's own print put the navigation and the
+    buttons on the paper; this is a built document."""
+
+    def test_it_returns_a_pdf(self, supervisor, make_lay):
+        lay = make_lay()
+        res = supervisor.get(f"/api/cutting/lays/{lay.pk}/pdf/")
+        assert res.status_code == 200
+        assert res["Content-Type"] == "application/pdf"
+        assert res.content[:5] == b"%PDF-"
+
+    def test_a4_is_the_default_and_a5_is_smaller(self, supervisor, make_lay):
+        lay = make_lay()
+        a4 = supervisor.get(f"/api/cutting/lays/{lay.pk}/pdf/").content
+        a5 = supervisor.get(f"/api/cutting/lays/{lay.pk}/pdf/?paper=a5").content
+        assert a4[:5] == b"%PDF-" and a5[:5] == b"%PDF-"
+        assert a4 != a5
+
+    def test_the_parameter_is_paper_not_size(self, supervisor, make_lay):
+        """`size` is the filter for a garment size present in the lay, and
+        get_object() runs the filters — `?size=a5` used to 404."""
+        lay = make_lay()
+        assert supervisor.get(
+            f"/api/cutting/lays/{lay.pk}/pdf/?size=a5"
+        ).status_code == 404
+
+    def test_an_unknown_size_falls_back_to_a4(self, supervisor, make_lay):
+        lay = make_lay()
+        odd = supervisor.get(f"/api/cutting/lays/{lay.pk}/pdf/?paper=letter")
+        assert odd.status_code == 200
+        assert odd.content[:5] == b"%PDF-"
+
+    def test_it_downloads_under_the_lay_code(self, supervisor, make_lay):
+        lay = make_lay()
+        res = supervisor.get(f"/api/cutting/lays/{lay.pk}/pdf/")
+        assert "attachment" in res["Content-Disposition"]
+        assert lay.code in res["Content-Disposition"]
+
+    def test_it_carries_the_numbers_and_the_arabic(self, supervisor, make_lay):
+        """Read the text back out rather than trusting that it rendered."""
+        import pymupdf
+
+        lay = make_lay(lines=[
+            {"roll_length_m": "99.50", "plies": 20, "remnant_m": "0.50",
+             "shade_note": "أسود"},
+        ])
+        res = supervisor.get(f"/api/cutting/lays/{lay.pk}/pdf/")
+        text = "".join(
+            page.get_text() for page in pymupdf.open(stream=res.content, filetype="pdf")
+        )
+        assert lay.code in text
+        assert "كارل رجالي" in text          # the model
+        assert "أسود" in text                # the shade made it through
+        assert str(lay.total_plies) in text
+        assert "مشرف القص" in text           # the signature block
+
+    def test_a_counted_lay_shows_its_count(self, supervisor, make_lay, user):
+        import pymupdf
+
+        lay = make_lay(status=Lay.STATUS_CLOSED)
+        services.record_output(lay, user, actual_pieces=118, rejected_pieces=2)
+        lay.refresh_from_db()
+        res = supervisor.get(f"/api/cutting/lays/{lay.pk}/pdf/")
+        text = "".join(
+            page.get_text() for page in pymupdf.open(stream=res.content, filetype="pdf")
+        )
+        assert "118" in text
+
+    def test_a_lay_with_no_lines_still_renders(self, supervisor, make_lay):
+        """An empty draft must not crash the printer."""
+        lay = make_lay(lines=[])
+        res = supervisor.get(f"/api/cutting/lays/{lay.pk}/pdf/")
+        assert res.status_code == 200
+        assert res.content[:5] == b"%PDF-"
+
+    def test_a_read_only_role_can_print(self, as_role, make_lay):
+        lay = make_lay()
+        assert as_role("production_manager").get(
+            f"/api/cutting/lays/{lay.pk}/pdf/"
+        ).status_code == 200
